@@ -6,9 +6,14 @@ on:
     tags: ["v*"]
   pull_request:
 
+env:
+  # archive.ubuntu.com is slow from GitHub runners, this is the mirror the runner hosts use.
+  APT_MIRROR: http://azure.archive.ubuntu.com/ubuntu/
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container: ubuntu:26.04
     steps:
       - uses: actions/checkout@v7
@@ -26,6 +31,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, version]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container: ubuntu:26.04
     steps:
       - uses: actions/checkout@v7
@@ -40,6 +46,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, version]
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - run: bash ci/conda.sh
@@ -52,6 +59,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: conda
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -80,9 +88,14 @@ jobs:
         with:
           path: output
           merge-multiple: true
-      - run: |
+      - name: Create the release or add the packages to an existing one
+        run: |
           case "$GITHUB_REF_NAME" in *-*) pre=--prerelease ;; *) pre= ;; esac
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --title "gr-serorx $GITHUB_REF_NAME" --generate-notes $pre output/*.deb output/*.conda
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+              gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber output/*.deb output/*.conda
+          else
+              gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                  --title "gr-serorx $GITHUB_REF_NAME" --generate-notes $pre output/*.deb output/*.conda
+          fi
         env:
           GH_TOKEN: ${{ github.token }}

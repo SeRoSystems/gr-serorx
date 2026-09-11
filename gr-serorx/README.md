@@ -7,7 +7,7 @@ GNU Radio 3.10 module for the SeRo Systems GRX receivers. Main block: **GRX Sour
 General tab:
 
 | Parameter | Meaning | Default |
-|-----------|---------|---------|
+| --------- | ------- | ------- |
 | Channel | `tunable`, `1030`, `1090` or `978`. Fixed channels ignore the tuning parameters. | `tunable` |
 | Receiver address | IP or hostname of the receiver | |
 | Center frequency (Hz) | tunable channel only. Wide 325 to 3800 MHz, Narrow 700 to 1100 MHz | 1090e6 |
@@ -19,7 +19,7 @@ General tab:
 Advanced tab:
 
 | Parameter | Meaning | Default |
-|-----------|---------|---------|
+| --------- | ------- | ------- |
 | Channel index | `per_band_index` of the channel | 0 |
 | Output | `fc32`: complex float scaled to ±1. `sc16`: raw int16 pairs. | `fc32` |
 | Buffer (s) | queue between the network reader and the flowgraph | 0.5 |
@@ -65,7 +65,7 @@ stream stopped: 458 blocks delivered, 916 lost (66.7 %): 916 reported by receive
 A failure at start is logged as an error and raised, so it is also the last line of the traceback in the GRC console.
 
 | Situation | Message |
-|-----------|------|
+| --------- | ------- |
 | No answer from the address | `host '192.0.2.1' could not be reached (no answer within 5 s), check address and receiver connection` |
 | Name does not resolve | `host 'grx-lab' does not resolve, check address` |
 | Host answers, streaming port closed | `host '192.0.2.1' answers, but port 5308 (Samplestreamingd) is closed, check address and firewall` |
@@ -82,7 +82,7 @@ A failure at start is logged as an error and raised, so it is also the last line
 While the flowgraph runs:
 
 | Situation | Message |
-|-----------|------|
+| --------- | ------- |
 | Stream breaks (link down, receiver reboot) | `stream from '192.0.2.1' lost (not reachable), reconnecting in 1 s`, backoff doubling to 10 s, then `stream from '192.0.2.1' resumed` |
 | Stream open, nothing arrives | `no samples from '192.0.2.1' for 5.0 s`, repeated every 30 s |
 | Setter while the receiver is gone | `hardware gain not set: host '192.0.2.1' could not be reached (no answer within 5 s)`, value unchanged |
@@ -98,7 +98,7 @@ Setters `set_center_freq`, `set_samp_rate`, `set_gain`, `set_rx_port`, `set_band
 ## Stream tags
 
 | Key | Value | When |
-|-----|-------|------|
+| --- | ----- | ---- |
 | `rx_rate` | double | start, after a sample rate change |
 | `rx_freq` | double | start, after a center frequency change (the value the receiver reports) |
 | `rx_time` | (uint64 seconds, double fraction), GPS time of week | start, after every gap, on every new stream (reconnect, sample rate change) |
@@ -113,7 +113,7 @@ For quickstart on 1090 MHz analysis, a basic decoding chain is provided. Four bl
 `examples/adsb_stages_demo.grc` implements the chain on the 1090 channel.
 
 | Block | In | Out |
-|-------|----|-----|
+| ----- | -- | --- |
 | **Mode S Preamble Detector** (`modes_preamble`) | magnitude stream | `windows`: one PDU per preamble candidate, the 120 µs frame window as float32, with `offset`, `spu`, `samp_rate` and `time` (from `rx_time` tags) in the metadata |
 | **Mode S PPM Slicer** (`modes_slicer`) | `windows` | `bits`: the 14 bytes with a `confidence` per bit and the `window` samples in the metadata. `confidence`: the confidences signed by the bit value, for a QT GUI Time Sink in message mode |
 | **Mode S Frame Check** (`modes_frame_check`) | `bits` | `frames`: frames with an accepted DF (default 17,18) and a valid CRC-24, after flipping the least confident bits one at a time when allowed. `hex`: the same as hex text in byte PDUs. `windows`: the samples of each accepted frame, for display |
@@ -132,6 +132,8 @@ For quickstart on 1090 MHz analysis, a basic decoding chain is provided. Four bl
 ```
 
 ## Build from source
+
+You can find the latest source code at [GitHub](https://github.com/SeRoSystems/gr-serorx).
 
 Requirements: GNU Radio 3.10 with its cmake files (`gnuradio-dev` on Debian), cmake, and `grpcio`, `protobuf`, `numpy` importable by the interpreter that runs flowgraphs.
 

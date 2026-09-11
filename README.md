@@ -50,15 +50,7 @@ The block `GRX Source` connects to a receiver and streams the selected
 channel. A basic ADS-B decoding chain is provided as an example. For
 more information, refer to the in package README (`gr-serorx/README.md`).
 
-## Examples
+### Examples
 
 You can find examples for the tunable channel and the ADS-B decoding
 flow in `gr-serorx/examples`.
-
-## CI
-
-Every push runs the QA tests (`.github/workflows/ci.yml`, steps in `ci/`).
-A tag `vX.Y.Z` also builds the Debian and conda packages, runs the QA tests
-against the installed conda package on Windows and attaches both packages to
-a GitHub release. A tag `vX.Y.Z-rc1` makes a pre-release. The tag has to match
-the version in `gr-serorx/CMakeLists.txt` and `gr-serorx/recipe/recipe.yaml`.
