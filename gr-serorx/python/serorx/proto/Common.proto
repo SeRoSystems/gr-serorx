@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package serosystems.proto.v3.grx;
+option java_package = "de.serosystems.proto.v3.grx";
+option java_outer_classname = "CommonProto";
+
+/*
+ * Band/Frequency a front end operates on.
+ * Note that this is currently also used by other protofiles that need to communicate bands.
+ */
+enum Band {
+	/* Unspecified band, used when uninitialized or no other enum member matches */
+	BAND_UNSPECIFIED = 0;
+
+	/* 978 MHz band. */
+	BAND_978_MHZ = 1;
+	/* 1030 MHz band. */
+	BAND_1030_MHZ = 2;
+	/* 1090 MHz band. */
+	BAND_1090_MHZ = 3;
+
+	/* Special "band" to identify a channel that is fixed to a band/frequency that is not included here as enum member */
+	BAND_FIXED = 127;
+	/* Special "band" to identify a channel that can be tuned to different bands/frequencies */
+	BAND_TUNABLE = 128;
+
+	/* Special enum member that does not describe a band, but can be used to indicated a "match all" when matching bands */
+	BAND_MATCH_ANY = 254;
+}
+
+/*
+ * Message used to clearly identify a radio.
+ */
+message RadioIdentification {
+  	/* The band this radio operates on */
+	Band band = 1;
+	/* The per-band-index, useful if there is more than a single radio per band */
+	int32 per_band_index = 2;
+}

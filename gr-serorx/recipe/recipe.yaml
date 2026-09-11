@@ -1,0 +1,28 @@
+context:
+  version: "0.5.0"
+
+package:
+  name: gr-serorx
+  version: ${{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  noarch: python
+  script: python recipe/install.py
+
+requirements:
+  host:
+    - python
+  run:
+    - python >=3.10
+    - gnuradio-core >=3.10
+    - grpcio
+    - protobuf
+    - numpy
+
+about:
+  summary: GNU Radio source block for SeRo Systems GRX receivers
+  license: GPL-3.0-or-later

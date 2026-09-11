@@ -1,0 +1,191 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package serosystems.proto.v3.grx.tunablechanneld;
+option java_package = "de.serosystems.proto.v3.grx.tunablechanneld";
+option java_outer_classname = "TunableChannelDProto";
+
+import "Common.proto";
+
+/* Reply for the GetChannels call */
+message GetChannelsReply {
+	/* list of RadioIdentifications that show all (tunable) channels */
+	repeated RadioIdentification channels = 1;
+}
+
+/* Reply for the GetRXPorts call */
+message GetRXPortsReply {
+	/* Maps the port identifier to a descriptive label */
+	map<uint32, string> rx_port_to_label = 1;
+}
+
+/* Request for the GetRXPorts call */
+message GetRXPortsRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+}
+
+/* Request for the GetRXPort call */
+message GetRXPortRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+}
+
+/* Reply for the GetRXPort call */
+message GetRXPortReply {
+	uint32 rx_port = 1;
+}
+
+/* Request for the SetRXPort call */
+message SetRXPortRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+	/* the requested RX port */
+	uint32 rx_port = 2;
+}
+
+/* Request for the GetCenterFrequency call */
+message GetCenterFrequencyRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+}
+
+/* Reply for the GetCenterFrequency call */
+message GetCenterFrequencyReply {
+	uint32 center_frequency_hz = 1;
+}
+
+/* Request for the SetCenterFrequency call */
+message SetCenterFrequencyRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+	/* the requested center frequency [Hz] */
+	uint32 center_frequency_hz = 2;
+}
+
+/* Request for the GetAnalogBandwidth call */
+message GetAnalogBandwidthRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+}
+
+/* Reply for the GetAnalogBandwidth call */
+message GetAnalogBandwidthReply {
+	/* the analog bandwidth [Hz] */
+	uint32 analog_bandwidth_hz = 1;
+}
+
+/* Request for the SetAnalogBandwidth call */
+message SetAnalogBandwidthRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+	/* requested analog bandwidth [Hz] */
+	uint32 analog_bandwidth_hz = 2;
+}
+
+/* Request for the GetSampleRate call */
+message GetSampleRateRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+}
+
+/* Reply for the GetSampleRate call */
+message GetSampleRateReply {
+	/* the sample rate [Sps] */
+	uint32 sample_rate_sps = 1;
+}
+
+/* Request for the SetSampleRate call */
+message SetSampleRateRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+	/* requested sample rate [Sps] */
+	uint32 sample_rate_sps = 2;
+}
+
+/* Request for the GetHardwareGain call */
+message GetHardwareGainRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+}
+
+/* Reply for the GetHardwareGain call */
+message GetHardwareGainReply {
+	/* the hardware gain [dB] */
+	int32 hardware_gain_db = 1;
+}
+
+/* Request for the SetHardwareGain call */
+message SetHardwareGainRequest {
+	/* identification of the channel */
+	RadioIdentification channel = 1;
+	/* requested hardware gain [dB] */
+	uint32 hardware_gain_db = 2;
+}
+
+/* TunableChannel daemon service definition. Port 5309. */
+service TunableChanneld {
+
+	/* Get a list of all (tunable) channels */
+	rpc GetChannels(google.protobuf.Empty) returns (GetChannelsReply);
+
+	/* Get a list of RX ports of the specified channel
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc GetRXPorts(GetRXPortsRequest) returns (GetRXPortsReply);
+
+	/* Get the currently chosen RX port of the specified channel
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc GetRXPort(GetRXPortRequest) returns (GetRXPortReply);
+
+	/* Choose the RX port of the specified channel
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc SetRXPort(SetRXPortRequest) returns (google.protobuf.Empty);
+
+	/* Get the center frequency [Hz] of the specified channel.
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc GetCenterFrequency(GetCenterFrequencyRequest) returns (GetCenterFrequencyReply);
+
+	/* Set the center frequency [Hz] of the specified channel.
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc SetCenterFrequency(SetCenterFrequencyRequest) returns (google.protobuf.Empty);
+
+	/* Get the analog bandwidth [Hz] of the specified channel.
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc GetAnalogBandwidth(GetAnalogBandwidthRequest) returns (GetAnalogBandwidthReply);
+
+	/* Set the analog bandwidth [Hz] of the specified channel.
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc SetAnalogBandwidth(SetAnalogBandwidthRequest) returns (google.protobuf.Empty);
+
+	/* Get the sample rate [Sps] of the specified channel.
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc GetSampleRate(GetSampleRateRequest) returns (GetSampleRateReply);
+
+	/* Set the sample rate [Sps] of the specified channel.
+	 * WARNING: changing the sample rate may interrupt the sampling process/data flow for a while
+	 *
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc SetSampleRate(SetSampleRateRequest) returns (google.protobuf.Empty);
+
+	/* Get the hardware gain [dB] of the specified channel.
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc GetHardwareGain(GetHardwareGainRequest) returns (GetHardwareGainReply);
+
+	/* Set the hardware gain [dB] of the specified channel.
+	 * Returns INVALID_ARGUMENT if request was invalid
+	 */
+	rpc SetHardwareGain(SetHardwareGainRequest) returns (google.protobuf.Empty);
+
+}
+

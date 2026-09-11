@@ -1,0 +1,39 @@
+id: serorx_qt_msg_log
+label: QT GUI Message Log
+category: '[SeRo RX]'
+flags: [python]
+
+templates:
+  imports: from gnuradio import serorx
+  make: |-
+    serorx.qt_msg_log(max_lines=${max_lines}, title=${title})
+    self._${id}_win = self.${id}.widget()
+    ${gui_hint() % ('self._' + id + '_win')}
+
+parameters:
+- id: max_lines
+  label: Max lines
+  dtype: raw
+  default: 500
+- id: title
+  label: Title
+  dtype: string
+  default: Messages
+- id: gui_hint
+  label: GUI Hint
+  dtype: gui_hint
+  hide: part
+
+inputs:
+- domain: message
+  id: in
+
+asserts:
+- "${ # Max lines invalid (missing or not positive)\nmax_lines is not None and max_lines > 0 }"
+
+documentation: |-
+  Appends every incoming message as one line to a read-only scrolling text box in the flowgraph
+  window. Strings and byte PDUs (the lines and hex ports of the ADS-B blocks) are shown as text,
+  other PMTs in their printed form. Older lines are dropped beyond Max lines.
+
+file_format: 1

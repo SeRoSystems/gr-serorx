@@ -1,0 +1,1007 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+
+package serosystems.proto.v3.grx.monitord;
+option java_package = "de.serosystems.proto.v3.grx.monitord";
+option java_outer_classname = "MonitorDProto";
+// Go package is relative to the web-ui package
+// This will result in "golang.sero-systems.de/grx/web-ui/proto/.../v3
+option go_package = "proto/monitord/v3";
+
+/* CPU Usage */
+message CPUUsage {
+	/*
+	 * CPU Usage information for a single CPU/core (or aggregated over all).
+	 * All values are percent of time spent in the given states within the last
+	 *  measurement period.
+	 */
+	message SingleCPUUsage {
+		float total = 1;
+		float user = 2;
+		float nice = 3;
+		float sys = 4;
+		float idle = 5;
+		float iowait = 6;
+		float irq = 7;
+		float softirq = 8;
+	}
+
+	/* Total CPU usage (of all CPUs/cores) as average. */
+	SingleCPUUsage total = 1;
+
+	/* CPU Usage broken down for each CPU/core. */
+	repeated SingleCPUUsage per_cpu = 2;
+}
+
+/* Memory usage. All values are in bytes. */
+message MemoryUsage {
+	uint64 total = 1;
+	uint64 used = 2;
+	uint64 free = 3;
+	uint64 shared = 4;
+	uint64 buffer = 5;
+	uint64 cached = 6;
+	uint64 user = 7;
+	uint64 locked = 8;
+}
+
+/* Swap memory usage. All values are in bytes. */
+message SwapUsage {
+	uint64 total = 1;
+	uint64 used = 2;
+	uint64 free = 3;
+}
+
+/* File system usage. */
+message FileSystemUsage {
+	/* Mount point. */
+	message MountEntry {
+		/* Probably not needed, what is it anyways? */
+		//uint64 dev = 1;
+		reserved 1;
+
+		/* Device name. */
+		string devname = 2;
+
+		/* Mount point. */
+		string mountdir = 3;
+
+		/* Filesystem type. */
+		string type = 4;
+	}
+
+	/* Mount point for this usage info. */
+	MountEntry mount = 1;
+
+	/* Total number of blocks. */
+	uint64 blocks = 2;
+
+	/* Free blocks available to non-superuser. */
+	uint64 bavail = 3;
+
+	/* Size of a block [b]. */
+	uint32 block_size = 4;
+}
+
+/* Process info. */
+message ProcessInfo {
+	/* Process ID. */
+	uint64 pid = 1;
+
+	/* User name. */
+	string user = 2;
+
+	/* Kernel scheduling priority. */
+	int32 priority = 3;
+
+	/* Standard unix nice level of process. */
+	int32 nice = 4;
+
+	/* The state, as defined by the GLIBTOP_PROCESS_* macros. */
+	int32 state = 5;
+
+	/* Command name. */
+	string command = 6;
+
+	/* Command Arguments. */
+	repeated string argument = 7;
+
+	/* Parent process ID. */
+	uint64 ppid = 8;
+
+	/* Total number of pages of virtual memory. */
+	uint64 mem_virt = 9;
+
+	/* Number of resident set (non-swapped) pages. */
+	uint64 mem_res = 10;
+
+	/* Number of pages of shared memory. */
+	uint64 mem_shared = 11;
+
+	/* Start time of the process [s since epoch UTC]. */
+	uint64 start_time = 12;
+
+	/* User-mode CPU time [s]. */
+	float utime = 13;
+
+	/* Kernel-mode CPU time [s]. */
+	float stime = 14;
+
+	/* TODO: possibly missing: %cpu, %mem */
+}
+
+/* Representation of a Debian Package. */
+message SystemPackage {
+	/* Debian package states. */
+	enum Status {
+		NOTINSTALLED = 0;
+		CONFIGFILES = 1;
+		HALFINSTALLED = 2;
+		UNPACKED = 3;
+		HALFCONFIGURED = 4;
+		TRIGGERSAWAITED = 5;
+		TRIGGERSPENDING = 6;
+		INSTALLED = 7;
+	};
+
+	/* Debian package state. */
+	Status status = 1;
+
+	/* Package name. */
+	string name = 2;
+
+	/* Package version. */
+	string version = 3;
+
+	/* Package architecture. */
+	string architecture = 4;
+}
+
+/*
+ * Representation of of a single log message.
+ * See also SYSTEMD.JOURNAL-FIELDS(7) for details.
+ */
+message LogMessage {
+	/* TODO: there can be many, many fields, which are usually organized in
+	 * key-value pairs, we only extract some here. */
+
+	/* Log message. */
+	string message = 1;
+
+	/* Value between 0 (emergency) and 7 (debug). */
+	uint32 priority = 2;
+
+	/* File of the code where the messages originates (if known). */
+	string code_file = 3;
+
+	/* Line of the code where the messages originates (if known). */
+	string code_line = 4;
+
+	/* Function of the code where the messages originates (if known). */
+	string code_func = 5;
+
+	/* Value of errno (if available). */
+	uint32 causing_errno = 6;
+
+	/* Syslog facility, see RFC 3164. */
+	uint32 syslog_facility = 7;
+
+	/*
+	 * Systemd SyslogIdentifier, defaulting to process name.
+	 * See also systemd.exec(5).
+	 */
+	string syslog_identifier = 8;
+
+	/* Syslog PID. */
+	uint32 syslog_pid = 9;
+
+	/* Time [ms since epoch UTC] this entry was received in the journal. */
+	uint64 realtime_timestamp = 10;
+}
+
+/* Representation of a systemd unit. */
+message Unit {
+	/* ID/name of the unit. */
+	string id = 1;
+
+	/* Description of the unit. */
+	string description = 2;
+
+	/* Load state, e.g. "loaded", "not-found",etc. */
+	string load_state = 3;
+
+	/* Active state, e.g. "active", "inactive", etc. */
+	string active_state = 4;
+
+	/* Sub-state, e.g. "running", "exited", etc. */
+	string sub_state = 5;
+
+	string following = 6;
+
+	/* SD-Bus path of the unit. */
+	string unit_path = 7;
+
+	uint32 job_id = 8;
+	string job_type = 9;
+	string job_path = 10;
+}
+
+/*
+ * Network device usage: rates for the measurement period, i.e.
+ * packets/s, bytes/s, errors/s and collisions/s.
+ */
+message NetworkDeviceUsage {
+	/* Name of the device. */
+	string device = 1;
+
+	uint32 packets_in = 2;
+	uint32 packets_out = 3;
+	uint32 packets_total = 4;
+	uint32 bytes_in = 5;
+	uint32 bytes_out = 6;
+	uint32 bytes_total = 7;
+	uint32 errors_in = 8;
+	uint32 errors_out = 9;
+	uint32 errors_total = 10;
+	uint32 collisions = 11;
+}
+
+/*
+ * Network device counters.
+ * Very similar to NetworkDeviceUsage, but gives absolute counter values instead
+ *  of rates.
+ * Make sure to take care of overflows. Currently, Linux uses 32 bit counters
+ *  for (probably most of) these values.
+ */
+message NetworkDeviceCounters {
+	/* Name of the device */
+	string device = 1;
+
+	uint32 packets_in = 2;
+	uint32 packets_out = 3;
+	uint32 packets_total = 4;
+	uint32 bytes_in = 5;
+	uint32 bytes_out = 6;
+	uint32 bytes_total = 7;
+	uint32 errors_in = 8;
+	uint32 errors_out = 9;
+	uint32 errors_total = 10;
+	uint32 collisions = 11;
+
+}
+
+/* System health information. */
+message SystemHealth {
+	/* CPU temperature [Deg. Celcius]. */
+	float temperature_cpu = 1;
+
+	/* Voltage at the DC input [V]. */
+	float voltage_dc_in = 2;
+}
+
+/* Overall system information. */
+message SystemInformation {
+	/* Current system time [s since epoch UTC]. */
+	uint64 system_time = 1;
+
+	/* Uptime of the system [s]. */
+	uint32 uptime = 2;
+
+	/* Reset reasons. */
+	enum ResetReason {
+		/*
+		 * Power on Reset, i.e. device has been connected to power. Does not
+		 *  indicate a problem.
+		 */
+		PowerOnReset = 0;
+
+		/*
+		 * System level controller reset. Happens e.g. if the device is
+		 *  rebooted manually. Usually does not indicate a problem.
+		 */
+		SystemLevelControllerReset = 1;
+
+		/*
+		 * System watchdog reset. Happens if the device is reset by the
+		 * internal watchdog timer. Indicates a problem.
+		 */
+		SystemWatchdogReset = 2;
+
+		/*
+		 * External system reset. Can happen on development device which have a
+		 *  mounted reset switch and if the Zynq is reset by the CPLD. Usually
+		 *  indicates a problem.
+		 */
+		ExternalSystemReset = 3;
+
+		/*
+		 * Debug reset. Should only happen during debugging with JTAG
+		 *  hardware.
+		 */
+		DebugReset = 4;
+
+		/* CPU0 APU watchdog timer reset, should never happen. */
+		APUWatchdogTimerReset0 = 5;
+
+		/* CPU1 APU watchdog timer reset, should never happen. */
+		APUWatchdogTimerReset1 = 6;
+	}
+
+	/*
+	 * The reset reasons. There can be multiple, as they need to be manually
+	 *  cleared.
+	 */
+	repeated ResetReason reset_reasons = 3;
+
+	/* The serial number of the device. */
+	string serial_number = 4;
+
+	/* System version fields. */
+	map<string, string> version_information = 5;
+}
+
+/*
+ * System Load: Number of jobs in run queue or waiting for IO over time.
+ * See /proc/loadavg under proc(5) for details.
+ */
+message SystemLoad {
+	/* Load average over last minute. */
+	float load_avg_1m = 1;
+
+	/* Load average over last 5 minutes. */
+	float load_avg_5m = 2;
+
+	/* Load average over last 15 minutes. */
+	float load_avg_15m = 3;
+}
+
+/* GNSS Information. */
+message GNSSInformation {
+	/* Position information. */
+	message Position {
+		/* Fix type of GNSS receiver. */
+		enum FixType {
+			/* No fix established. */
+			None = 0;
+			/* 2D position fix. */
+			Pos2D = 2;
+			/* 3D position fix. */
+			Pos3D = 3;
+			/*
+			 * Time only fix. Used in "stationary" mode, when the position is
+			 *  assumed to be static.
+			 */
+			TimeOnly = 5;
+		}
+
+		/* Type of fix. */
+		FixType fix_type = 1;
+
+		/* Number of satellites used in the solution. Actually uint8. */
+		uint32 sats_used = 2;
+
+		/* Latitude [degrees]. */
+		double latitude = 3;
+
+		/* Longitude [degrees]. */
+		double longitude = 4;
+
+		/* Height above WGS-84 ellipsoid [m]. */
+		double height = 5;
+
+		/* Estimated horizontal accuracy [m]. */
+		double horizontal_accuracy = 6;
+
+		/* Estimated vertical accuracy [m]. */
+		double vertical_accuracy = 7;
+	}
+
+	/* Further timing-related information. */
+	message Timing {
+		/* UTC Timing information. */
+		message UTC {
+			/* UTC standard of GNSS receiver. */
+			enum Standard {
+				/* Unknown. */
+				Unknown = 0;
+				/* UTC as operated by the U.S. Naval Observatory (USNO). */
+				USNO = 3;
+				/* UTC as operated by the former Soviet Union. */
+				SU = 6;
+				/*
+				 * UTC as operated by the National Time Service Center, China.
+				 */
+				China = 7;
+			};
+
+			/* Whether all UTC fields are valid. */
+			bool valid = 1;
+
+			/* Used UTC standard. */
+			Standard standard = 2;
+
+			/* UTC year. Actually uint16. */
+			uint32 year = 3;
+
+			/* UTC month. Actually uint8. */
+			uint32 month = 4;
+
+			/* UTC day. Actually uint8. */
+			uint32 day = 5;
+
+			/* UTC hour. Actually uint8. */
+			uint32 hour = 6;
+
+			/* UTC minute. actually uint8. */
+			uint32 min = 7;
+
+			/*
+			 * UTC second (may also be 60, if a leap second is present).
+			 * Actually uint8.
+			 */
+			uint32 sec = 8;
+		}
+
+		/* Disciplining sources of GNSS receiver. */
+		enum DiscipliningSource {
+			/* Internal oscillator. */
+			Internal = 0;
+			/* GNSS. */
+			GNSS = 1;
+			EXTINT0 = 2;
+			EXTINT1 = 3;
+			/* Internal oscillator measured by the host. */
+			InternalMeasuredByHost = 4;
+			/* External oscillator measured by the host. */
+			ExternalMeasuredByHost = 5;
+		};
+
+		/* UTC timing information. */
+		UTC utc = 1;
+
+		/* Whether time pulse is within tolerance limits. */
+		bool time_pulse_within_tolerance = 2;
+
+		/* Whether the internal oscillator is within tolerance limits. */
+		bool internal_oscillator_within_tolerance = 3;
+
+		/* Disciplining source of the oscillator. */
+		DiscipliningSource disciplining_source = 4;
+
+		/*
+		 * Whether the Receiver Autonomous Integrity Monitoring Algorithm
+		 * (RAIM) system is active.
+		 */
+		bool raim_active = 5;
+
+		/* Whether coherent pulse generation is in operation. */
+		bool coherent_pulse_generation = 6;
+
+		/* Whether the time pulse is locked.
+		 * Note: even when locked, it may still be out of tolerance.
+		 */
+		bool time_pulse_locked = 7;
+
+		/* Offset between preceding pulse and UTC top of second [ns]. */
+		int32 preceding_pulse_utc_offset = 8;
+
+		/* Estimated GNSS time accuracy [ns]. If 0, value is invalid.
+		 * During holdover, this will usually grow large.
+		 * Was previously only named `time_accuracy`, which was inaccurate.
+		 */
+		uint32 gnss_time_accuracy = 9;
+
+		/* Internal oscillator frequency offset [ppb]. */
+		float internal_oscillator_frequency_offset = 10;
+
+		/* Internal oscillator frequency uncertainty [ppb]. */
+		float internal_oscillator_frequency_uncertainty = 11;
+
+		/* Estimated overall time accuracy [ns] as reported by the module. If 0, value is invalid.
+		 * It is important to note that this may not include external holdover
+		 * oscillator uncertainties, but can only represent a module-internal
+		 * state.
+		 * During non-holdover, this will be similar as the `gnss_time_accuracy`, but
+		 * during holdover, this value should NOT be consulted. Instead, use the
+		 * field `time_accuracy_estimation` of `holdover_oscillator`.
+		 */
+		uint32 module_utc_accuracy = 12;
+
+		/* Estimated overall time accuracy [ns]. If 0, value is invalid.
+		 * During non-holdover, this will be similar as the `gnss_time_accuracy`, but
+		 * during holdover, this value will represent the accuracy of the (external)
+		 * holdover oscillator (see also `HoldoverOscillator::time_accuracy_estimation`).
+		 */
+		uint32 overall_time_accuracy = 13;
+	}
+
+
+	message HoldoverOscillator {
+
+	  /* Describes what kind of holdover oscillator schema is used. */
+	  enum Schema {
+	    /* Only the built-in oscillator (in most cases, this will be the VCTCXO of the GNSS module) is used */
+	    BUILT_IN_ONLY = 0;
+	    /* The built-in oscillator is main clock source, but during hold-over
+	       it is disciplined by a more stable external oscillator */
+	    BUILT_IN_DISCIPLINED_BY_EXTERNAL = 1;
+	    /* The external oscillator is main clock source. During non-holdover,
+	       it is disciplined by the built-in GNSS module. */
+	    EXTERNAL_DISCIPLINED_BY_BUILT_IN = 2;
+	    /* The external oscillator is main clock source. It is self-contained, i.e.
+	       it does not need to be disciplined by the built-in GNSS module. */
+	    EXTERNAL_SELF_CONTAINED = 3;
+	  };
+
+	  Schema schema = 1;
+	  /* A string describing the model of the external oscillator, e.g. "CSAC SA.45s" */
+	  string model = 2;
+
+	  /* For how many seconds the holdover state is active. Holdover is active iff value > 0 */
+	  uint32 holdover_active_seconds = 3;
+
+	  /* True iff the external oscillator is considered "ready" to holdover.
+	     This usually requires some internal locks to be acquired, device to be sufficiently
+	     warmed up and more.
+	   */
+	  bool is_ready_for_holdover = 4;
+
+	  /* True iff the external oscillator issues a warning.
+	     A warning is considered to describe a non-fatal, but possibly degraded state.
+	     This could e.g. be the case if the internal temperature cannot be properly maintained.
+	   */
+	  bool warning_present = 5;
+
+	  /* True iff the external oscillator issues a failure.
+	     A failure is considered to describe a fatal state where no operation is possible.
+	     This could e.g. be hardware failure.
+	   */
+	  bool failure_present = 6;
+
+	  /* Estimated accuracy of the time [ns]. If 0, value is invalid. */
+	  uint32 time_accuracy_estimation = 7;
+
+	  /* Detailed health information about external oscillator.
+	     As this is highly device-specific, we only provide key-value string-pairs here. */
+	  //message HealthDetails {
+	  // string key;
+	  // string value;
+	  //};
+	  //repeated HealthDetails health_details;
+
+	};
+
+
+	/* GNSS hardware monitoring related information. */
+	message HardwareMonitoring {
+		/* Jamming state of GNSS receiver. */
+		enum JammingState {
+			/* Unknown or feature disabled. */
+			UnknownOrDisabled = 0;
+			/* OK, no significant jamming. */
+			OK = 1;
+			/* Warning, interference visible, but fix OK. */
+			Warning = 2;
+			/* Critical, interference visible and no fix. */
+			Critical = 3;
+		}
+
+		/* Noise level (as measured by the GPS core), actually uint8. */
+		uint32 noise_level = 1;
+
+		/* AGC Monitor (range 0 to 8191). */
+		uint32 agc_monitor = 2;
+
+		/* Output of the interference monitor. */
+		JammingState jamming_state = 3;
+
+		/*
+		 * Continuous wave (CW) jamming indicator: 0 (no CW jamming) to 255
+		 *  (strong CW jamming).
+		 */
+		uint32 jamming_indicator = 4;
+
+		/* Magnitude of the I-part of the complex signal (0..255). */
+		uint32 signal_magnitude_i = 5;
+
+		/* Magnitude of the Q-part of the complex signal (0..255). */
+		uint32 signal_magnitude_q = 6;
+
+		/* Imbalance of the I-part of the complex signal (-128..127). */
+		int32 signal_imbalance_i = 7;
+
+		/* Imbalance of the Q-part of the complex signal (-128..127). */
+		int32 signal_imbalance_q = 8;
+
+		/* Number of 100ms timeslots with parity errors. */
+		uint32 timeslots_parity_errors = 9;
+
+		/* Number of 100ms timeslots with framing errors. */
+		uint32 timeslots_framing_errors = 10;
+
+		/* Number of 100ms timeslots with overrun errors. */
+		uint32 timeslots_overrun_errors = 11;
+
+		/* Number of 100ms timeslots with break conditions. */
+		uint32 timeslots_break_conditions = 12;
+
+		/* Maximum usage of transmitter buffer during the last sysmon period for all targets [%]. */
+		uint32 tx_buffers_usage = 13;
+
+		/* Maximum usage of transmitter buffer for all targets (overall) [%]. */
+		uint32 tx_buffers_peak_usage = 14;
+	}
+
+	/* Version information. */
+	message Versions {
+		/* Hardware version of the GNSS module. */
+		string module_hw = 1;
+
+		/* Software version of the GNSS module. */
+		string module_sw = 2;
+	}
+
+	/* GNSS Survey-In (timing mode) related information. */
+	message SurveyIn {
+		/* Duration of the survey-in process [s]. */
+		uint32 duration = 1;
+
+		/* Current mean position in ECEF coordinates (X component) [cm]. */
+		int32 mean_ecef_x = 2;
+
+		/* Current mean position in ECEF coordinates (Y component) [cm]. */
+		int32 mean_ecef_y = 3;
+
+		/* Current mean position in ECEF coordinates (Z component) [cm]. */
+		int32 mean_ecef_z = 4;
+
+		/* Mean variance of the position [mm^2]. */
+		uint32 mean_variance = 5;
+
+		/* Number of observations until now. */
+		uint32 num_observations = 6;
+
+		/* Whether a valid position has been found. */
+		bool valid = 7;
+
+		/* Whether the survey in progress is still active. */
+		bool active = 8;
+	}
+
+	/* Details about a satellite */
+	message SatelliteDetails {
+
+		/* See 21.6. UBX Satellite Numbering */
+		enum GNSSIdentifier {
+			GPS = 0;
+			SBAS = 1;
+			Galileo = 2;
+			BeiDou = 3;
+			IMES = 4;
+			QZSS = 5;
+			GLONASS = 6;
+		}
+
+		/* GNSS identifier */
+		GNSSIdentifier gnss_id = 1;
+		/* Satellite identifier, actually uint8 */
+		int32 satellite_id = 2;
+		/* Carrier to noise ratio [dBHz], actually uint8 */
+		int32 carrier_noise_ratio = 3;
+		/* Elevation -90 deg to +90 deg. Not present if unknown. Actually sint8 */
+		optional sint32 elevation = 4;
+		/* Azimuth 0 deg to 360 deg. Not present if unknown. Actually sint16 */
+		optional sint32 azimuth = 5;
+		/* Pseudo range residual [0.1 m], actually sint16 */
+		sint32 pseudo_range_residual = 6;
+
+
+		QualityIndicator quality_indicator = 7;
+		enum QualityIndicator {
+			NO_SIGNAL = 0;
+			SEARCHING_SIGNAL = 1;
+			SIGNAL_AQUIRED = 2;
+			SIGNAL_DETECTED_BUT_UNUSABLE = 3;
+			CODE_LOCKED_AND_TIME_SYNCHRONIZED = 4;
+			CODE_AND_CARRIER_LOCKED_AND_TIME_SYNCHRONIZED_5 = 5;
+			CODE_AND_CARRIER_LOCKED_AND_TIME_SYNCHRONIZED_6 = 6;
+			CODE_AND_CARRIER_LOCKED_AND_TIME_SYNCHRONIZED_7 = 7;
+		}
+
+		/* currently being used for navigation? */
+		bool satellite_used = 8;
+
+		HealthFlag health = 9;
+		enum HealthFlag {
+			UNKNOWN = 0;
+			HEALTHY = 1;
+			UNHEALTHY = 2;
+		}
+
+		bool differential_correction_data_available = 10;
+		bool carrier_smoothed_pseudorange_used = 11;
+		OrbitSource orbit_source = 12;
+		enum OrbitSource {
+			NO_ORBIT_INFORMATION_AVAILABLE = 0;
+			EPHEMERIS_USED = 1;
+			ALMANAC_USED = 2;
+			ASSIST_NOW_OFFLINE_ORBIT_USED = 3;
+			ASSIST_NOW_AUTONOMOUS_ORBIT_USED = 4;
+			OTHER_ORBIT_INFORMATION_5 = 5;
+			OTHER_ORBIT_INFORMATION_6 = 6;
+			OTHER_ORBIT_INFORMATION_7 = 7;
+		}
+
+		bool ephemeris_available = 13;
+		bool almanac_available = 14;
+		bool assist_now_offline_data_available = 15;
+		bool assist_now_autonomous_data_available = 16;
+
+	}
+
+	/* Message containing a list of satellite details */
+	message DetailedSatelliteInformation {
+		repeated SatelliteDetails satellite_details = 1;
+	}
+
+	/* Position information. */
+	Position position = 1;
+
+	/* Timing-related information, such as UTC time. */
+	Timing timing = 2;
+
+	/* GNSS hardware monitoring related information. */
+	HardwareMonitoring hardware = 3;
+
+	/* Version information. */
+	Versions versions = 4;
+
+	/* GNSS Survey-In (timing mode) related information. */
+	SurveyIn survey_in = 5;
+
+	/* Holdover oscillator related information */
+	// TODO: this might need to move out of GNSS ...
+	HoldoverOscillator holdover_oscillator = 6;
+
+	/* Detailed satellite information. If not present, no detailed satellite infomation are communicated. */
+	optional DetailedSatelliteInformation satellite_information = 7;
+}
+
+/* Reply for GetCPUUsageHistory() call. */
+message GetCPUUsageHistoryReply {
+	/* Pair of timestamp [s since epoch UTC] and cpu usage. */
+	message Pair {
+		uint64 timestamp = 1;
+		CPUUsage cpu_usage = 2;
+	}
+
+	/* CPU usage history. */
+	repeated Pair history = 1;
+}
+
+/* Reply for GetMemoryUsageHistory() call. */
+message GetMemoryUsageHistoryReply {
+	/* Pair of timestamp [s since epoch UTC] and memory usage. */
+	message Pair {
+		uint64 timestamp = 1;
+		MemoryUsage memory_usage = 2;
+	}
+
+	/* Memory usage history. */
+	repeated Pair history = 1;
+}
+
+/* Reply for GetSwapUsageHistory() call. */
+message GetSwapUsageHistoryReply {
+	/* Pair of timestamp [s since epoch UTC] and swap usage. */
+	message Pair {
+		uint64 timestamp = 1;
+		SwapUsage swap_usage = 2;
+	}
+
+	/* Swap usage history. */
+	repeated Pair history = 1;
+}
+
+/* Request for GetLogMessages() call. */
+message GetLogMessagesRequest {
+	/* List of matches, same semantics as specified for journalctl(1). */
+	repeated string match = 1;
+
+	/* Maximum number of (most recent) entries to fetch. Set to 0 for all. */
+	uint32 max_lines = 2;
+
+	/* If set, only show entries after the specified cursor. */
+	string after_cursor = 3;
+
+	/*
+	 * If set, only show entries since the specified timestamp [ms since epoch
+	 *  UTC].
+	 */
+	uint64 since = 4;
+
+	/*
+	 * If set, only show entries until the specified timestamp [ms since epoch]
+	.*/
+	uint64 until = 5;
+}
+
+/* Reply for GetMountedFilesystemUsage() call. */
+message GetMountedFilesystemUsageReply {
+	/* List of mounted file systems with their usage. */
+	repeated FileSystemUsage file_system = 1;
+}
+
+/* Reply for GetProcessList() call. */
+message GetProcessListReply {
+	/* List of processes. */
+	repeated ProcessInfo processes = 1;
+}
+
+/* Reply for GetSystemPackages() call. */
+message GetSystemPackagesReply {
+	/* List of (installed) packages */
+	repeated SystemPackage package = 1;
+}
+
+/* Reply for GetLogMessages() call. */
+message GetLogMessagesReply {
+	/*
+	 * Current cursor in the journal, can be used to only fetch new messages in
+	 * the next request.
+	 */
+	string cursor = 1;
+
+	/* Messages. */
+	repeated LogMessage message = 2;
+}
+
+/* Reply for GetUnitList() call. */
+message GetUnitListReply {
+	/* List of systemd units */
+	repeated Unit unit = 1;
+}
+
+/* Reply for GetNetworkUsage() call. */
+message GetNetworkUsageReply {
+	/* List of network devices with their usage. */
+	repeated NetworkDeviceUsage device_usage = 1;
+}
+
+/* Reply for GetNetworkUsageHistory() call. */
+message GetNetworkUsageHistoryReply {
+	/* Pair of timestamp [s since epoch UTC] and network device usage. */
+	message Pair {
+		uint64 timestamp = 1;
+		repeated NetworkDeviceUsage network_usage = 2;
+	}
+
+	/* Network device usage history. */
+	repeated Pair history = 1;
+}
+
+/* Reply for GetNetworkCounters() call. */
+message GetNetworkCountersReply {
+	/* List of network devices with their counters. */
+	repeated NetworkDeviceCounters device_counters = 1;
+}
+
+/* Reply for GetSystemHealthHistory() call. */
+message GetSystemHealthHistoryReply {
+	/* Pair of timestamp [s since epoch UTC] and system health values. */
+	message Pair {
+		uint64 timestamp = 1;
+		SystemHealth values = 2;
+	}
+	/* System health value history. */
+	repeated Pair history = 1;
+}
+
+/* Reply for GetSystemLoadHistory() call. */
+message GetSystemLoadHistoryReply {
+	/* Pair of timestamp [s since epoch UTC] and system load. */
+	message Pair {
+		uint64 timestamp = 1;
+		SystemLoad load = 2;
+	}
+	/* System load history. */
+	repeated Pair history = 1;
+}
+
+/* Reply for GetFullSystemStatus() call. **/
+message GetFullSystemStatusReply {
+	GNSSInformation gnss_information = 1;
+	SystemLoad system_load = 2;
+	SystemHealth system_health = 3;
+	MemoryUsage memory_usage = 4;
+	repeated FileSystemUsage file_system_usage = 5;
+	repeated NetworkDeviceUsage network_usage = 6;
+	SystemInformation system_information = 7;
+}
+
+/* Monitor daemon service definition. Port 5305. */
+service Monitord {
+	/* Get current CPU usage. */
+	rpc GetCPUUsage (google.protobuf.Empty) returns (CPUUsage);
+
+	/* Get history of CPU usage. */
+	rpc GetCPUUsageHistory (google.protobuf.Empty) returns (GetCPUUsageHistoryReply);
+
+	/* Get current memory usage. */
+	rpc GetMemoryUsage (google.protobuf.Empty) returns (MemoryUsage);
+
+	/* Get history of memory usage. */
+	rpc GetMemoryUsageHistory (google.protobuf.Empty) returns (GetMemoryUsageHistoryReply);
+
+	/* Get current swap usage. */
+	rpc GetSwapUsage (google.protobuf.Empty) returns (SwapUsage);
+
+	/* Get history of swap usage. */
+	rpc GetSwapUsageHistory (google.protobuf.Empty) returns (GetSwapUsageHistoryReply);
+
+	/* Get current file system usage. */
+	rpc GetMountedFilesystemUsage (google.protobuf.Empty) returns (GetMountedFilesystemUsageReply);
+
+	/* Get a list of processes. */
+	rpc GetProcessList (google.protobuf.Empty) returns (GetProcessListReply);
+
+	/* Get a list of (installed) system packages. */
+	rpc GetSystemPackages (google.protobuf.Empty) returns (GetSystemPackagesReply);
+
+	/* Get log messages (without streaming/waiting for new ones). */
+	rpc GetLogMessages (GetLogMessagesRequest) returns (GetLogMessagesReply);
+
+	/* Get a list (with states) of systemd units. */
+	rpc GetUnitList (google.protobuf.Empty) returns (GetUnitListReply);
+
+	/* Get current network usage. */
+	rpc GetNetworkUsage (google.protobuf.Empty) returns (GetNetworkUsageReply);
+
+	/* Get history of network usage. */
+	rpc GetNetworkUsageHistory (google.protobuf.Empty) returns (GetNetworkUsageHistoryReply);
+
+	/* Get counters (in contrast to the rates) of the network usage. */
+	rpc GetNetworkCounters (google.protobuf.Empty) returns (GetNetworkCountersReply);
+
+	/* Get current system health. */
+	rpc GetSystemHealth (google.protobuf.Empty) returns (SystemHealth);
+
+	/* Get history of system health. */
+	rpc GetSystemHealthHistory (google.protobuf.Empty) returns (GetSystemHealthHistoryReply);
+
+	/* Get current system load. */
+	rpc GetSystemLoad (google.protobuf.Empty) returns (SystemLoad);
+
+	/* Get history of system load. */
+	rpc GetSystemLoadHistory (google.protobuf.Empty) returns (GetSystemLoadHistoryReply);
+
+	/*
+	 * Get (lower level) information about the system, like e.g. uptime, reset
+	 *  reasons or low-level version information.
+	 */
+	rpc GetSystemInformation (google.protobuf.Empty) returns (SystemInformation);
+
+
+	/*
+	 * Clear all reset resons (see SystemInformation message).
+	 *  This can be used to "acknowledge" certain events, such as a watchdog reset
+	 *  (or also a simple "power on reset").
+	 */
+	rpc ClearResetReasons (google.protobuf.Empty) returns (google.protobuf.Empty);
+
+	/*
+	 * Get information related to the Global Navigation Satellite System
+	 *  (GNSS).
+	 *  Note: if the information is not available or outdated, the gRPC
+	 *  call will fail with status code ABORTED.
+	 */
+	rpc GetGNSSInformation (google.protobuf.Empty) returns (GNSSInformation);
+
+	/* Get full system status (single call for 7 most used calls).
+	 *  Note: submessages may be omitted if the "sub calls" fail, e.g.
+	 *  if GNSS information are invalid, the `gnss_information` submessage
+	 *  will not be included.
+	 */
+	rpc GetFullSystemStatus (google.protobuf.Empty) returns (GetFullSystemStatusReply);
+}

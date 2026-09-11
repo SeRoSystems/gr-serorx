@@ -1,0 +1,38 @@
+id: serorx_adsb_fields
+label: ADS-B Fields
+category: '[SeRo RX]/ADS-B'
+flags: [python]
+
+templates:
+  imports: from gnuradio.serorx import adsb
+  make: adsb.adsb_fields(print_lines=${print_lines})
+
+parameters:
+- id: print_lines
+  label: Print to console
+  dtype: bool
+  default: 'True'
+  options: ['True', 'False']
+  option_labels: ['Yes', 'No']
+
+inputs:
+- domain: message
+  id: frames
+
+outputs:
+- domain: message
+  id: lines
+  optional: true
+- domain: message
+  id: fields
+  optional: true
+
+documentation: |-
+  Decodes DF17 and DF18 frames (a PDU with the 14 bytes from the Mode S Frame Check, a PDU with 28 hex
+  characters, or a hex string). lines carries one text line per frame as a byte PDU: time, DF, ICAO,
+  type code, then callsign, altitude, latitude and longitude (once an even and an odd position message
+  of the aircraft arrived within 10 s), speed, track, airspeed, heading, vertical rate. fields carries
+  the same as a dict with df, icao, tc, frame (the 14 bytes) and time. Any other message is dropped
+  with one warning.
+
+file_format: 1

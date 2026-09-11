@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash ci/apt.sh
+      - run: bash ci/test.sh
+
+  version:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash ci/check_version.sh "$GITHUB_REF_NAME"
+
+  deb:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash ci/apt.sh
+      - run: bash ci/deb.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb
+          path: output/*.deb
+
+  conda:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash ci/conda.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: conda
+          path: output/noarch/*.conda
+
+  windows:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: conda
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: conda
+          path: output/noarch
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: ci/conda-test-env.yml
+          init-shell: powershell
+      - name: Install the package
+        run: micromamba install -y -n ci (Get-ChildItem output/noarch/*.conda).FullName
+        shell: pwsh
+      - name: QA tests against the installed package
+        run: python ci/run_qa.py
+        shell: pwsh
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [deb, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: output
+          merge-multiple: true
+      - run: |
+          case "$GITHUB_REF_NAME" in *-*) pre=--prerelease ;; *) pre= ;; esac
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --title "gr-serorx $GITHUB_REF_NAME" --generate-notes $pre output/*.deb output/*.conda
+        env:
+          GH_TOKEN: ${{ github.token }}

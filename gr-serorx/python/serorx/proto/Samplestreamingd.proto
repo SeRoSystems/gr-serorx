@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package serosystems.proto.v3.grx.samplestreamingd;
+option java_package = "de.serosystems.proto.v3.grx.samplestreamingd";
+option java_outer_classname = "SamplestreamingDProto";
+
+import "Common.proto";
+
+/**
+ * Message describing the properties of a stream.
+ */
+message StreamProperties {
+
+	/* Center Frequency [Hz]. */
+	uint32 center_frequency = 1;
+
+	/* Sample rate [Hz]. */
+	uint32 sample_rate = 2;
+
+	/* Calibration value to convert from sample values to signal level in dBm.
+	 * Use the following formula to convert the squared magnitude (i.e. I^2 + Q^2) to a signal level in dBm:
+	 * signal_level [dBm] = calibration_value + 10 * log10(I^2 + Q^2)
+	 */
+	float calibration_value = 3;
+
+}
+
+/* Request type for GetStreamProperties call */
+message GetStreamPropertiesRequest {
+
+	/* Radio identification of the chosen RX channel */
+	RadioIdentification radio_identification = 1;
+
+}
+
+/* Request type for StartStream call */
+message StartStreamRequest {
+
+	/* Radio identification of the chosen RX channel */
+	RadioIdentification radio_identification = 1;
+
+	/* The number of blocks that are requested, set to zero for indefinite streaming */
+	uint32 requested_blocks = 2;
+}
+
+/* Reply type for StartStream call */
+message StartStreamReply {
+
+	/* data is streamed in blocks, each block has a timestamp */
+	uint64 block_timestamp = 1;
+
+	/* the samples */
+	bytes samples = 2;
+
+	/* counter for lost blocks, can be used to find out a) if blocks have been lost and b) where exactly */
+	uint32 lost_blocks = 3;
+
+}
+
+/* Sample streaming daemon service definition. Port 5308. */
+service Samplestreamingd {
+
+	/* Request the stream properties. They usually do not change over time
+	 * (unless the radio front-end allows retuning/changing settings, see TunableChanneld).
+	 * Returns INVALID_ARGUMENT if chosen RX channel is not available.
+	 */
+	rpc GetStreamProperties (GetStreamPropertiesRequest) returns (StreamProperties);
+
+	/*
+	 * Request a stream of samples.
+	 * Returns INVALID_ARGUMENT if chosen RX channel is not available
+	 */
+	rpc StartStream(StartStreamRequest) returns (stream StartStreamReply) {}
+	
+}

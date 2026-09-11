@@ -1,0 +1,14 @@
+title: gr-serorx
+brief: GNU Radio source block for SeRo Systems GRX receivers
+tags:
+  - sdr
+  - grx
+author:
+  - Fabio Ramirez Stern
+copyright_owner:
+  - SeRo Systems GmbH
+license: GPL-3.0
+gr_supported_version: v3.10
+repo: https://github.com/SeRoSystems/gr-serorx
+---
+Streams IQ from one channel of a GRX receiver over gRPC and tunes that channel where the receiver has a tunable one.

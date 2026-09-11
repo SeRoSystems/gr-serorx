@@ -1,0 +1,150 @@
+id: serorx_grx_source
+label: GRX Source
+category: '[SeRo RX]'
+flags: [python, throttle]
+
+templates:
+  imports: from gnuradio import serorx
+  make: |-
+    serorx.grx_source(
+        host=${host}, band=${band}, channel_index=${channel_index},
+        center_freq=${center_freq}, samp_rate=${samp_rate}, gain=${gain},
+        rx_port=${rx_port}, bandwidth=${bandwidth}, output_type=${output_type},
+        buffer_seconds=${buffer_seconds}, control_port=${control_port},
+        stream_port=${stream_port}, monitor_port=${monitor_port}, timeout=${timeout})
+  callbacks:
+  - set_center_freq(${center_freq})
+  - set_samp_rate(${samp_rate})
+  - set_gain(${gain})
+  - set_rx_port(${rx_port})
+  - set_bandwidth(${bandwidth})
+
+parameters:
+- id: band
+  label: Channel
+  dtype: enum
+  default: "'tunable'"
+  options: ["'tunable'", "'1030'", "'1090'", "'978'"]
+  option_labels: [Tunable, 1030 MHz, 1090 MHz, 978 MHz]
+- id: host
+  label: Receiver address
+  dtype: string
+- id: center_freq
+  label: Center frequency (Hz)
+  dtype: raw
+  default: 1090e6
+  hide: ${ 'none' if band == "'tunable'" else 'all' }
+- id: samp_rate
+  label: Sample rate (Sps)
+  dtype: raw
+  default: 12e6
+  hide: ${ 'none' if band == "'tunable'" else 'all' }
+- id: gain
+  label: Hardware gain (dB)
+  dtype: raw
+  default: 0
+  hide: ${ 'none' if band == "'tunable'" else 'all' }
+- id: rx_port
+  label: RX input
+  dtype: enum
+  default: "'wide'"
+  options: ["'wide'", "'narrow'"]
+  option_labels: [Wide, Narrow (LNA)]
+  hide: ${ 'none' if band == "'tunable'" else 'all' }
+- id: bandwidth
+  label: Analog bandwidth (Hz)
+  dtype: raw
+  default: 0
+  hide: ${ 'none' if band == "'tunable'" else 'all' }
+- id: channel_index
+  label: Channel index
+  dtype: raw
+  default: 0
+  category: Advanced
+  hide: part
+- id: output_type
+  label: Output
+  dtype: enum
+  default: "'fc32'"
+  options: ["'fc32'", "'sc16'"]
+  option_labels: [Complex float (scaled to ±1), Complex int16 (raw)]
+  option_attributes:
+    type: [complex, sc16]
+  category: Advanced
+- id: buffer_seconds
+  label: Buffer (s)
+  dtype: raw
+  default: 0.5
+  category: Advanced
+- id: control_port
+  label: Control port
+  dtype: raw
+  default: 5309
+  category: Advanced
+  hide: part
+- id: stream_port
+  label: Stream port
+  dtype: raw
+  default: 5308
+  category: Advanced
+  hide: part
+- id: monitor_port
+  label: Monitor port
+  dtype: raw
+  default: 5305
+  category: Advanced
+  hide: part
+- id: timeout
+  label: RPC timeout (s)
+  dtype: raw
+  default: 5
+  category: Advanced
+- id: check_ranges
+  label: Check value ranges
+  dtype: bool
+  default: 'True'
+  options: ['True', 'False']
+  option_labels: [Yes, 'No']
+  category: Advanced
+  hide: part
+
+outputs:
+- domain: stream
+  dtype: ${ output_type.type }
+
+asserts:
+- "${ # Receiver address is missing\nhost != '' }"
+- "${ # Center frequency invalid (missing or not positive)\ncenter_freq is not None and center_freq > 0 }"
+- "${ # Sample rate invalid (missing or not positive)\nsamp_rate is not None and samp_rate > 0 }"
+- "${ # Hardware gain invalid (missing or negative)\ngain is not None and gain >= 0 }"
+- "${ # Analog bandwidth invalid (missing or negative)\nbandwidth is not None and bandwidth >= 0 }"
+- "${ # Channel index invalid (missing or negative)\nchannel_index is not None and channel_index >= 0 }"
+- "${ # Buffer invalid (missing or not positive)\nbuffer_seconds is not None and buffer_seconds > 0 }"
+- "${ # TunableChanneld port number is missing\ncontrol_port is not None }"
+- "${ # Samplestreamingd port number is missing\nstream_port is not None }"
+- "${ # Monitord port number is missing\nmonitor_port is not None }"
+- "${ # RPC timeout invalid (missing or not positive)\ntimeout is not None and timeout > 0 }"
+- "${ # Wide input center frequency not between 325 MHz and 3800 MHz\nnot check_ranges or band != \"'tunable'\" or rx_port != \"'wide'\" or center_freq is None or 325e6 <= center_freq <= 3800e6 }"
+- "${ # Narrow input center frequency not between 700 MHz and 1100 MHz\nnot check_ranges or band != \"'tunable'\" or rx_port != \"'narrow'\" or center_freq is None or 700e6 <= center_freq <= 1100e6 }"
+- "${ # Sample rate not between 2.083 MSps and 61.44 MSps\nnot check_ranges or band != \"'tunable'\" or samp_rate is None or 2083334 <= samp_rate <= 61.44e6 }"
+- "${ # Hardware gain not between 0 dB and 70 dB\nnot check_ranges or band != \"'tunable'\" or gain is None or gain <= 70 }"
+- "${ # Analog bandwidth not between 200 kHz and 20 MHz\nnot check_ranges or band != \"'tunable'\" or bandwidth is None or bandwidth == 0 or 200e3 <= bandwidth <= 20e6 }"
+
+documentation: |-
+  Streams IQ from one channel of a SeRo Systems GRX receiver over gRPC.
+  The tunable channel accepts center frequency, sample rate, gain, RX input and analog bandwidth.
+  Fixed channels stream at their fixed properties.
+
+  Console: receiver model, serial, hardware and image, the channels the receiver offers, the
+  settings the receiver reports, warnings if a value was not adopted, runtime changes, lost
+  blocks and a loss summary when stopping.
+
+  Tags: rx_rate and rx_freq at start and on change, rx_time and grx_timestamp at start, after gaps
+  and on every new stream (GPS time of week as seconds plus fraction, and raw nanoseconds),
+  grx_lost_blocks (count after a gap), grx_calibration_db (level_dBm = value + 10*log10(I^2 + Q^2)).
+
+  Value ranges: Wide input 325 to 3800 MHz, Narrow input 700 to 1100 MHz, sample rate 2.083 to
+  61.44 MSps, hardware gain 0 to 70 dB, analog bandwidth 200 kHz to 20 MHz. "Check value ranges" set to
+  No passes other values to the receiver, which rejects or clamps what it cannot do.
+
+file_format: 1

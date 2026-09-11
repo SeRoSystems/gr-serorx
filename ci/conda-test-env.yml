@@ -1,0 +1,11 @@
+# Environment the built conda package is installed into for the QA run (Windows job).
+name: ci
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - gnuradio-core
+  - grpcio
+  - protobuf
+  - numpy
+  - pyqt
