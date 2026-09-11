@@ -53,14 +53,18 @@ def reachability(err, timeout=PROBE_TIMEOUT):
     (name lookup failed), 'unroutable' (no route or network down), 'failed' (the port is open or the
     endpoint is malformed, and the RPC failed anyway). None when the service answered.
 
-    An UNAVAILABLE error is classified by a plain TCP connection to the endpoint: gRPC words its socket
-    errors in the language of the OS, the exception class and errno of the probe do not depend on it.
+    DEADLINE_EXCEEDED and UNAVAILABLE are classified by a plain TCP connection to the endpoint: gRPC
+    words its socket errors in the language of the OS, the exception class and errno of the probe do
+    not depend on it. The probe waits at least PROBE_TIMEOUT: Windows reports a closed port only after
+    about a second of retries, so a short RPC deadline passes before gRPC sees the refusal. A deadline
+    error whose port accepts the probe stays a timeout.
     """
-    if err.code == grpc.StatusCode.DEADLINE_EXCEEDED:
-        return "timeout"
-    if err.code != grpc.StatusCode.UNAVAILABLE:
+    if err.code not in (grpc.StatusCode.DEADLINE_EXCEEDED, grpc.StatusCode.UNAVAILABLE):
         return None
-    return _probe(err.endpoint, timeout)
+    kind = _probe(err.endpoint, max(timeout, PROBE_TIMEOUT))
+    if err.code == grpc.StatusCode.DEADLINE_EXCEEDED and kind == "failed":
+        return "timeout"
+    return kind
 
 
 def _probe(endpoint, timeout):

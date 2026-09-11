@@ -81,7 +81,9 @@ class qa_grx_client(gr_unittest.TestCase):
         def err(endpoint, code=unavailable):
             return grx_client.GrxError(endpoint, code, "Verbindung verweigert")
 
-        self.assertEqual(grx_client.reachability(err("h:1", grpc.StatusCode.DEADLINE_EXCEEDED)), "timeout")
+        deadline = grpc.StatusCode.DEADLINE_EXCEEDED
+        self.assertEqual(grx_client.reachability(err(self.control.endpoint, deadline)), "timeout")
+        self.assertEqual(grx_client.reachability(err("127.0.0.1:1", deadline)), "refused")
         self.assertEqual(grx_client.reachability(err("127.0.0.1:1")), "refused")
         self.assertEqual(grx_client.reachability(err("grx.invalid:5309")), "unresolved")
         self.assertEqual(grx_client.reachability(err("192.0.2.1:5309"), timeout=0.3), "timeout")
