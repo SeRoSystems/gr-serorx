@@ -78,6 +78,7 @@ A failure at start is logged as an error and raised, so it is also the last line
 | Monitord port closed | a warning, `host '192.0.2.1' answers, but port 5305 (Monitord) is closed, check address and firewall. Model and serial unknown`, and the flowgraph runs |
 | grpcio or protobuf missing for the interpreter GRC uses | `gr-serorx needs the grpcio and protobuf packages for /usr/bin/python3: sudo apt install python3-grpcio python3-protobuf (Debian), conda install grpcio protobuf (radioconda)` |
 | protobuf older than 3.20 | `protobuf 3.19.6 is too old for gr-serorx, 3.20 or newer is needed` |
+| Blocks missing from the GRC palette after install | GRC lists new blocks only after a restart. A GNU Radio installed outside `/usr` or `/usr/local` needs `GRC_BLOCKS_PATH=<prefix>/share/gnuradio/grc/blocks` |
 
 While the flowgraph runs:
 
@@ -138,11 +139,17 @@ You can find the latest source code at [GitHub](https://github.com/SeRoSystems/g
 Requirements: GNU Radio 3.10 with its cmake files (`gnuradio-dev` on Debian), cmake, and `grpcio`, `protobuf`, `numpy` importable by the interpreter that runs flowgraphs.
 
 ```bash
+sudo apt install gnuradio-dev cmake make g++ python3-grpcio python3-protobuf python3-numpy python3-pyqt5
+```
+
+```bash
 mkdir -p build && cd build
 cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
 make
 sudo make install
 ```
+
+`sudo make uninstall` removes the installed files.
 
 The QA tests in `python/serorx/qa/` need `grpcio` in the test interpreter and the fake receiver from `fake-grx/` next to this module (see its README). The examples run against the fake with `host = 'localhost'`. GNU Radio's cmake forces the interpreter it was built with, so a different one is given explicitly:
 
@@ -161,14 +168,14 @@ Debian package for apt GNU Radio:
 mkdir -p build-deb && cd build-deb
 cmake -DCMAKE_INSTALL_PREFIX=/usr -DGR_PYTHON_DIR=lib/python3/dist-packages ..
 make && cpack
-sudo apt install ./gr-serorx_0.5.0_all.deb
+sudo apt install ./gr-serorx_<version>_all.deb
 ```
 
 Conda package for radioconda (Windows, Linux, macOS), built with [rattler-build](https://github.com/prefix-dev/rattler-build):
 
 ```bash
 rattler-build build --recipe recipe/recipe.yaml -c conda-forge --output-dir out
-conda install ./out/noarch/gr-serorx-0.5.0-*.conda
+conda install ./out/noarch/gr-serorx-<version>-*.conda
 ```
 
 ## Stubs

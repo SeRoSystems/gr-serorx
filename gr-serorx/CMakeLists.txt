@@ -82,6 +82,10 @@ install(FILES MANIFEST.yml
     RENAME MANIFEST-${VERSION_MAJOR}.${VERSION_API}.${VERSION_ABI}.${VERSION_PATCH}.yml
     DESTINATION share/gnuradio/manifests/serorx)
 
+install(FILES LICENSE
+    RENAME copyright
+    DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
 ########################################################################
 # Debian package (cpack from a build configured with prefix /usr)
 ########################################################################
@@ -91,7 +95,8 @@ set(CPACK_PACKAGE_VERSION "${VERSION_MAJOR}.${VERSION_API}.${VERSION_ABI}")
 set(CPACK_PACKAGE_CONTACT "Fabio Ramirez Stern <github@faramire.de>")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "GNU Radio source block for SeRo Systems GRX receivers")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE all)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuradio (>= 3.10), python3-grpcio, python3-protobuf, python3-numpy")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuradio (>= 3.10), python3 (>= 3.10), python3-grpcio, python3-protobuf (>= 3.20), python3-numpy")
 set(CPACK_DEBIAN_PACKAGE_SECTION hamradio)
+set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/SeRoSystems/gr-serorx")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 include(CPack)

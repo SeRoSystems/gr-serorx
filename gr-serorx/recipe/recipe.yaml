@@ -19,6 +19,9 @@ requirements:
   run:
     - python >=3.10
     - gnuradio-core >=3.10
+    - gnuradio-grc >=3.10
+    - gnuradio-qtgui >=3.10
+    - pyqt
     - grpcio
     - protobuf
     - numpy
@@ -26,3 +29,4 @@ requirements:
 about:
   summary: GNU Radio source block for SeRo Systems GRX receivers
   license: GPL-3.0-or-later
+  license_file: LICENSE

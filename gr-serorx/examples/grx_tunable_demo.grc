@@ -80,7 +80,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [216, 16.0]
+    coordinate: [200, 16.0]
     rotation: 0
     state: enabled
 - name: samp_rate
@@ -173,7 +173,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [432, 192.0]
+    coordinate: [432, 200.0]
     rotation: 0
     state: enabled
 - name: qtgui_waterfall_sink_x_0
@@ -234,7 +234,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [432, 320.0]
+    coordinate: [432, 328.0]
     rotation: 0
     state: enabled
 - name: serorx_grx_source_0
@@ -264,7 +264,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [88, 188.0]
+    coordinate: [88, 204.0]
     rotation: 0
     state: enabled
 
