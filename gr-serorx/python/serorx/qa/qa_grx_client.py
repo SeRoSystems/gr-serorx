@@ -1,3 +1,6 @@
+import socket
+from unittest import mock
+
 import grpc
 from gnuradio import gr_unittest
 
@@ -85,7 +88,8 @@ class qa_grx_client(gr_unittest.TestCase):
         self.assertEqual(grx_client.reachability(err(self.control.endpoint, deadline)), "timeout")
         self.assertEqual(grx_client.reachability(err("127.0.0.1:1", deadline)), "refused")
         self.assertEqual(grx_client.reachability(err("127.0.0.1:1")), "refused")
-        self.assertEqual(grx_client.reachability(err("grx.invalid:5309")), "unresolved")
+        with mock.patch.object(grx_client.socket, "create_connection", side_effect=socket.gaierror):
+            self.assertEqual(grx_client.reachability(err("grx.invalid:5309")), "unresolved")
         self.assertEqual(grx_client.reachability(err("192.0.2.1:5309"), timeout=0.3), "timeout")
         self.assertEqual(grx_client.reachability(err(self.control.endpoint)), "failed")
         self.assertEqual(grx_client.reachability(err("no port")), "failed")

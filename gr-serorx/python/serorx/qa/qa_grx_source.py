@@ -152,8 +152,10 @@ class qa_grx_source(gr_unittest.TestCase):
         self.assertEqual(lines, [("error", message)])
 
     def test_unresolved_host_fails_construction(self):
-        with self.assertRaises(RuntimeError) as ctx:
-            self.source(host="grx.invalid", timeout=2.0)
+        # The probe is patched: a resolver that answers for any name would reach the refused branch.
+        with mock.patch.object(MODULE, "reachability", return_value="unresolved"):
+            with self.assertRaises(RuntimeError) as ctx:
+                self.source(host="grx.invalid", timeout=0.5)
         self.assertEqual(str(ctx.exception), "host 'grx.invalid' does not resolve, check address")
 
     def test_console_receiver_and_settings(self):
