@@ -16,6 +16,13 @@ General tab:
 | RX input | `wide` (325-3800 MHz) or `narrow` (700-1100 MHz, LNA) | `wide` |
 | Analog bandwidth (Hz) | 200 kHz to 20 MHz, 0 leaves the device setting unchanged | 0 |
 
+Decoding tab:
+
+| Parameter | Meaning | Default |
+| --------- | ------- | ------- |
+| [Stream name] (bool) | Subscribes to that Receiverd stream and tags every decoded item | Off |
+| Decode delay (s) | Time the block waits for receiverd to provide decoded data | 0.25 |
+
 Advanced tab:
 
 | Parameter | Meaning | Default |
@@ -26,8 +33,9 @@ Advanced tab:
 | Control port | TunableChanneld | 5309 |
 | Stream port | Samplestreamingd | 5308 |
 | Monitor port | Monitord, model and serial | 5305 |
+| Receiverd port | Receiverd, the receiver's own decoder output | 5303 |
 | RPC timeout (s) | unary control calls | 5 |
-| Check value ranges | GRC refuses values outside the ranges above. `No` passes any value to the receiver, which rejects what it cannot do. | Yes |
+| Check value ranges | GRC refuses values outside the defined ranges. `No` passes any value to the receiver, which rejects what it cannot do. | Yes |
 
 GRC marks the block red for a missing value or a value outside a range and names the reason in the properties dialog
 
@@ -106,6 +114,50 @@ Setters `set_center_freq`, `set_samp_rate`, `set_gain`, `set_rx_port`, `set_band
 | `grx_timestamp` | uint64, raw `block_timestamp` in ns of GPS time of week | start, after every gap, on every new stream (reconnect, sample rate change) |
 | `grx_lost_blocks` | uint64 | after a gap: device counter delta plus locally dropped blocks |
 | `grx_calibration_db` | double | start, and whenever the value the receiver reports changes (polled every second). `level_dBm = value + 10*log10(I^2 + Q^2)` |
+| `grx_<stream>` | dict of the item fields and its `timestamp` | one per decoded item of a stream switched on in the Decoding tab, on the sample it was decoded from |
+
+## Receiver decoding
+
+The receiver decodes the signals it receives and publishes them on Receiverd, one stream per signal
+type. A stream switched on in the Decoding tab adds one tag per decoded item to the sample it was
+decoded from, synchronised from the item's GPS timestamp and the timestamp of the block carrying it.
+All IQ streaming bands can be tagged with any receiverd streams,
+even if they are unrelated.
+
+| Stream | Tag key | Band |
+| ------ | ------- | ---- |
+| Mode S downlink | `grx_modes_downlink` | 1090 MHz |
+| Mode S uplink | `grx_modes_uplink` | 1030 MHz |
+| Mode A/C downlink | `grx_modeac_downlink` | 1090 MHz |
+| UAT ADS-B | `grx_uat_adsb` | 978 MHz |
+| UAT ground uplink | `grx_uat_uplink` | 978 MHz |
+| DME/TACAN pulse pairs | `grx_dme_tacan` | variable |
+| Isolated pulses | `grx_isolated_pulses` | variable |
+| Mode 4 interrogations | `grx_mode4_interrogations` | 1030 MHz |
+| Mode 4 replies | `grx_mode4_replies` | 1090 MHz |
+| Mode 5 interrogations | `grx_mode5_interrogations` | 1030 MHz |
+| Mode 5 replies | `grx_mode5_replies` | 1090 MHz |
+| Mode 1/2/3 A/C interrogations | `grx_mode123ac_interrogations` | 1030 MHz |
+
+The tag value is a dict of the `timestamp` (uint64 ns, GPS time of week) and the fields of the item.
+Mode S and UAT carry `payload` (u8vector), `df` or `uf`, `corrected_bits`, `address_tracked` and
+`message_valid`. Every stream but Mode A/C carries `level_signal` and `level_noise` in dBm, and
+`carrier_offset` with `carrier_error` where the receiver computed them. Mode A/C carries `code` and
+`receptions`, DME/TACAN `spacing`, isolated pulses `duration`, Mode 1/2/3 A/C `mode`, `all_call`,
+`include_mode_s`, `s1_level` and `sls_level`, Mode 4 interrogations `sls_level`.
+
+A decoded item reaches the flowgraph over its own gRPC stream, before or after the samples it
+belongs to. The decode delay is how long a block waits in the queue before it leaves the block, and
+every item that arrives within that window lands on its sample. It is added to the latency of the
+flowgraph. Items that arrive later are counted and reported:
+
+```Console
+decoding Mode S downlink, DME/TACAN pulse pairs, tagged within 0.25 s of their samples
+12 decoded items were older than the buffer in the last 5 s, raise the decode delay above 0.62 s
+decoding stopped: 431 items tagged (Mode S downlink 402, DME/TACAN pulse pairs 29), 12 older than the buffer
+```
+
+If the receiver has no GNSS timing lock, no syncronisation is possible and samples will not be tagged. An unreachable Receiverd port or a receiver without the requested capabilities logs a warning in the console.
 
 ## ADS-B decoding
 

@@ -10,8 +10,15 @@ templates:
         host=${host}, band=${band}, channel_index=${channel_index},
         center_freq=${center_freq}, samp_rate=${samp_rate}, gain=${gain},
         rx_port=${rx_port}, bandwidth=${bandwidth}, output_type=${output_type},
-        buffer_seconds=${buffer_seconds}, control_port=${control_port},
-        stream_port=${stream_port}, monitor_port=${monitor_port}, timeout=${timeout})
+        buffer_seconds=${buffer_seconds}, decode_delay=${decode_delay},
+        decodes=[name for name, on in (('modes_downlink', ${modes_downlink}), ('modes_uplink', ${modes_uplink}),
+                 ('modeac_downlink', ${modeac_downlink}), ('uat_adsb', ${uat_adsb}), ('uat_uplink', ${uat_uplink}),
+                 ('dme_tacan', ${dme_tacan}), ('isolated_pulses', ${isolated_pulses}),
+                 ('mode4_interrogations', ${mode4_interrogations}), ('mode4_replies', ${mode4_replies}),
+                 ('mode5_interrogations', ${mode5_interrogations}), ('mode5_replies', ${mode5_replies}),
+                 ('mode123ac_interrogations', ${mode123ac_interrogations})) if on],
+        control_port=${control_port}, stream_port=${stream_port}, monitor_port=${monitor_port},
+        decode_port=${decode_port}, timeout=${timeout})
   callbacks:
   - set_center_freq(${center_freq})
   - set_samp_rate(${samp_rate})
@@ -94,11 +101,119 @@ parameters:
   default: 5305
   category: Advanced
   hide: part
+- id: decode_port
+  label: Receiverd port
+  dtype: raw
+  default: 5303
+  category: Advanced
+  hide: part
 - id: timeout
   label: RPC timeout (s)
   dtype: raw
   default: 5
   category: Advanced
+- id: decode_delay
+  label: Decode delay (s)
+  dtype: raw
+  default: 0.25
+  category: Decoding
+  hide: ${ 'none' if (modes_downlink or modes_uplink or modeac_downlink or uat_adsb or uat_uplink or dme_tacan or isolated_pulses or mode4_interrogations or mode4_replies or mode5_interrogations or mode5_replies or mode123ac_interrogations) else 'part' }
+- id: modes_downlink
+  label: Mode S downlink
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if modes_downlink else 'part' }
+- id: modes_uplink
+  label: Mode S uplink
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if modes_uplink else 'part' }
+- id: modeac_downlink
+  label: Mode A/C downlink
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if modeac_downlink else 'part' }
+- id: uat_adsb
+  label: UAT ADS-B
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if uat_adsb else 'part' }
+- id: uat_uplink
+  label: UAT ground uplink
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if uat_uplink else 'part' }
+- id: dme_tacan
+  label: DME/TACAN pulse pairs
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if dme_tacan else 'part' }
+- id: isolated_pulses
+  label: Isolated pulses
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if isolated_pulses else 'part' }
+- id: mode4_interrogations
+  label: Mode 4 interrogations
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if mode4_interrogations else 'part' }
+- id: mode4_replies
+  label: Mode 4 replies
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if mode4_replies else 'part' }
+- id: mode5_interrogations
+  label: Mode 5 interrogations
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if mode5_interrogations else 'part' }
+- id: mode5_replies
+  label: Mode 5 replies
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if mode5_replies else 'part' }
+- id: mode123ac_interrogations
+  label: Mode 1/2/3 A/C interrogations
+  dtype: bool
+  default: 'False'
+  options: ['False', 'True']
+  option_labels: ['Off', 'On']
+  category: Decoding
+  hide: ${ 'none' if mode123ac_interrogations else 'part' }
 - id: check_ranges
   label: Check value ranges
   dtype: bool
@@ -124,6 +239,8 @@ asserts:
 - "${ # Samplestreamingd port number is missing\nstream_port is not None }"
 - "${ # Monitord port number is missing\nmonitor_port is not None }"
 - "${ # RPC timeout invalid (missing or not positive)\ntimeout is not None and timeout > 0 }"
+- "${ # Receiverd port number is missing\ndecode_port is not None }"
+- "${ # Decode delay invalid (missing or negative)\ndecode_delay is not None and decode_delay >= 0 }"
 - "${ # Wide input center frequency not between 325 MHz and 3800 MHz\nnot check_ranges or band != \"'tunable'\" or rx_port != \"'wide'\" or center_freq is None or 325e6 <= center_freq <= 3800e6 }"
 - "${ # Narrow input center frequency not between 700 MHz and 1100 MHz\nnot check_ranges or band != \"'tunable'\" or rx_port != \"'narrow'\" or center_freq is None or 700e6 <= center_freq <= 1100e6 }"
 - "${ # Sample rate not between 2.083 MSps and 61.44 MSps\nnot check_ranges or band != \"'tunable'\" or samp_rate is None or 2083334 <= samp_rate <= 61.44e6 }"
@@ -142,6 +259,13 @@ documentation: |-
   Tags: rx_rate and rx_freq at start and on change, rx_time and grx_timestamp at start, after gaps
   and on every new stream (GPS time of week as seconds plus fraction, and raw nanoseconds),
   grx_lost_blocks (count after a gap), grx_calibration_db (level_dBm = value + 10*log10(I^2 + Q^2)).
+
+  Decoding: the receiver decodes the signals it receives and publishes them on Receiverd. Every stream
+  switched on in the Decoding tab adds one grx_<stream> tag per decoded item, a dict of its fields and
+  its GPS timestamp, on the sample the item was decoded from. A stream carries one band, named in its
+  label, and only the channel of that band carries the matching samples. The decode delay is how long
+  a block waits before it leaves the block, the window an item has to arrive in. It is added to the
+  latency. Items arriving later are counted and reported.
 
   Value ranges: Wide input 325 to 3800 MHz, Narrow input 700 to 1100 MHz, sample rate 2.083 to
   61.44 MSps, hardware gain 0 to 70 dB, analog bandwidth 200 kHz to 20 MHz. "Check value ranges" set to

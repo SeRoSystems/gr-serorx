@@ -3,13 +3,14 @@ import collections
 import re
 import threading
 import time
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pmt
 from gnuradio import gr
 
 from .grx_client import GrxControl, GrxError, GrxMonitor, GrxStream, channel_label, radio_id, reachability
+from .grx_decode import SPECS, STREAM_NAMES, GrxDecode
 
 TAG_RATE = "rx_rate"
 TAG_FREQ = "rx_freq"
@@ -17,9 +18,12 @@ TAG_TIMESTAMP = "grx_timestamp"
 TAG_TIME = "rx_time"
 TAG_LOST = "grx_lost_blocks"
 TAG_CALIBRATION = "grx_calibration_db"
+TAG_DECODE_PREFIX = "grx_"
 
 BYTES_PER_SAMPLE = 4
 NS = 1_000_000_000
+WEEK_NS = 7 * 24 * 3600 * NS
+EARLY_GRACE = 2.0
 SCALE = np.float32(1.0 / 32768.0)
 RX_PORT_NAMES = ("wide", "narrow")
 OUTPUT_TYPES = {"fc32": np.complex64, "sc16": (np.int16, 2)}
@@ -40,6 +44,45 @@ HZ_UNITS = ((1e6, "MHz"), (1e3, "kHz"), (1, "Hz"))
 SPS_UNITS = ((1e6, "MSps"), (1e3, "kSps"), (1, "Sps"))
 RX_RANGES = {"wide": "325 to 3800 MHz", "narrow": "700 to 1100 MHz"}
 SYSFS_PATH = re.compile(r"/sys/[^\s)]*/([^\s/)]+)")
+
+
+def _sample_offset(timestamp, base, samp_rate):
+    """Sample index of timestamp in a block starting at base. Negative before it, computed over the GPS week."""
+    delta = (timestamp - base) % WEEK_NS
+    if delta > WEEK_NS // 2:
+        delta -= WEEK_NS
+    return delta * samp_rate // NS
+
+
+def _pmt_value(value):
+    if isinstance(value, bool):
+        return pmt.from_bool(value)
+    if isinstance(value, int):
+        return pmt.from_long(value)
+    if isinstance(value, float):
+        return pmt.from_double(value)
+    if isinstance(value, bytes):
+        return pmt.init_u8vector(len(value), list(value))
+    return pmt.intern(str(value))
+
+
+def _decode_value(item):
+    """The item fields plus its raw timestamp as a PMT dict."""
+    value = pmt.dict_add(pmt.make_dict(), pmt.intern("timestamp"), pmt.from_uint64(item.timestamp))
+    for key, entry in item.fields.items():
+        value = pmt.dict_add(value, pmt.intern(key), _pmt_value(entry))
+    return value
+
+
+@dataclass
+class _Entry:
+    """One queued block. marks are (sample index, stream name, tag key, tag value) of the decodes it carries."""
+    samples: bytes
+    tags: list
+    timestamp: int
+    count: int
+    arrived: float
+    marks: list = field(default_factory=list)
 
 
 def _rx_time(timestamp_ns):
@@ -78,15 +121,22 @@ class grx_source(gr.sync_block):
     recomputes its stream properties on a 10 s clock, so a calibration change shows up to 10 s later.
     The reader thread polls them every REFRESH_INTERVAL. Centre frequency and sample rate come from
     TunableChanneld, which answers at once.
+
+    decodes names the Receiverd streams to subscribe to, from grx_decode.STREAM_NAMES. Each decoded item
+    becomes one grx_<stream> tag, a dict of its fields, on the sample its GPS timestamp names. decode_delay
+    is how long a block waits in the queue before it leaves, the window an item has to arrive in.
     """
 
     def __init__(self, host, band="tunable", channel_index=0, center_freq=1090e6, samp_rate=12e6, gain=0,
-                 rx_port="wide", bandwidth=0, output_type="fc32", buffer_seconds=0.5,
-                 control_port=5309, stream_port=5308, monitor_port=5305, timeout=5.0):
+                 rx_port="wide", bandwidth=0, output_type="fc32", buffer_seconds=0.5, decodes=(), decode_delay=0.25,
+                 control_port=5309, stream_port=5308, monitor_port=5305, decode_port=5303, timeout=5.0):
         if output_type not in OUTPUT_TYPES:
             raise ValueError(f"Output {output_type!r} not in {sorted(OUTPUT_TYPES)}")
         if rx_port not in RX_PORT_NAMES:
             raise ValueError(f"RX input {rx_port!r} not in {RX_PORT_NAMES}")
+        unknown = [name for name in decodes if name not in STREAM_NAMES]
+        if unknown:
+            raise ValueError(f"Decode stream {unknown[0]!r} not in {list(STREAM_NAMES)}")
         gr.sync_block.__init__(self, name="grx_source", in_sig=None, out_sig=[OUTPUT_TYPES[output_type]])
         self._float = output_type == "fc32"
         self._radio = radio_id(band, channel_index)
@@ -103,6 +153,9 @@ class grx_source(gr.sync_block):
         self._host = host
         self._stream_port = stream_port
         self._control_port = control_port
+        self._decode_port = decode_port
+        self._decode_names = tuple(decodes)
+        self._decode_delay = max(float(decode_delay), 0.0) if self._decode_names else 0.0
 
         self._lock = threading.Lock()
         self._not_empty = threading.Condition(self._lock)
@@ -113,6 +166,7 @@ class grx_source(gr.sync_block):
         self._start_tags = []
         self._current = None
         self._offset = 0
+        self._marks = collections.deque()
         self._reader = None
         self._iter = None
         self._stop_reader = threading.Event()
@@ -130,6 +184,18 @@ class grx_source(gr.sync_block):
         self._stall_reported = None
         self._interrupted = False
         self._slow_hinted = False
+        self._decode = None
+        self._decode_keys = {name: pmt.intern(TAG_DECODE_PREFIX + name) for name in self._decode_names}
+        self._decode_threads = []
+        self._decode_iters = {}
+        self._stop_decoders = threading.Event()
+        self._early = []
+        self._decode_tagged = collections.Counter()
+        self._decode_lost = collections.Counter()
+        self._decode_device = {}
+        self._decode_shortfall = 0.0
+        self._decode_reported = 0
+        self._decode_report_time = time.monotonic()
 
         self._control = GrxControl(host, control_port, self._timeout) if self._tunable else None
         self._stream = GrxStream(host, stream_port, self._timeout)
@@ -149,6 +215,7 @@ class grx_source(gr.sync_block):
         self._log("info", self._settings_line(reported))
         for line in self._mismatches(reported):
             self._log("warn", line)
+        self._open_decode(host)
 
     # console
 
@@ -190,11 +257,11 @@ class grx_source(gr.sync_block):
             return f"Selected RX input ({self._rx_port.capitalize()}) supports {RX_RANGES[self._rx_port]}"
         return RANGE_HINTS.get(name)
 
-    def _stream_reason(self, err):
+    def _stream_reason(self, err, port=None, service="Samplestreamingd"):
         """Reason for the reconnect line: the closed port with its service, not reachable, or the status name."""
         kind = reachability(err, self._timeout)
         if kind == "refused":
-            return f"port {self._stream_port} (Samplestreamingd) closed"
+            return f"port {port or self._stream_port} ({service}) closed"
         if kind is not None:
             return "not reachable"
         return err.code.name.lower().replace("_", " ")
@@ -202,7 +269,7 @@ class grx_source(gr.sync_block):
     def _fail(self, message):
         """Logs the message, closes the gRPC channels and raises it as the only exception, without the gRPC error underneath."""
         self._log("error", message)
-        for client in (self._control, self._stream):
+        for client in (self._control, self._stream, self._decode):
             if client is not None:
                 client.close()
         raise RuntimeError(message) from None
@@ -325,6 +392,163 @@ class grx_source(gr.sync_block):
                 f"({100.0 * lost / total:.1f} %): {self._lost_link} reported by receiver, "
                 f"{self._lost_buffer} dropped by full buffer")
 
+    # decoding
+
+    def _open_decode(self, host):
+        """Connects to Receiverd when a stream is selected. An unreachable service is a warning, the tags stay away."""
+        if not self._decode_names:
+            return
+        self._decode = GrxDecode(host, self._decode_port, self._timeout)
+        try:
+            stats = self._decode.statistics()
+        except GrxError as err:
+            problem = self._connection_problem(err, self._decode_port, "Receiverd") or str(err)
+            self._log("warn", f"{problem}. No decode tags")
+            self._decode.close()
+            self._decode = None
+            self._decode_names = ()
+            self._decode_delay = 0.0
+            return
+        labels = ", ".join(SPECS[name].label for name in self._decode_names)
+        self._log("info", f"decoding {labels}, tagged within {self._decode_delay:.2f} s of their samples")
+        for line in self._incapable(stats):
+            self._log("warn", line)
+
+    def _incapable(self, stats):
+        """One line naming the selected streams the receiver does not report, from its reception capabilities."""
+        reported = set(stats.reception_capabilities.capabilities)
+        if not reported:
+            return []
+        missing = [SPECS[name].label for name in self._decode_names
+                   if not reported.intersection(SPECS[name].capabilities)]
+        if not missing:
+            return []
+        return [f"receiver does not report {', '.join(missing)}, those streams stay silent"]
+
+    def _start_decoding(self):
+        if self._decode is None:
+            return
+        self._stop_decoders.clear()
+        self._decode_report_time = time.monotonic()
+        self._decode_threads = [threading.Thread(target=self._decode_loop, args=(name,), name=f"grx_{name}",
+                                                 daemon=True) for name in self._decode_names]
+        for thread in self._decode_threads:
+            thread.start()
+
+    def _stop_decoding(self):
+        self._stop_decoders.set()
+        for name in list(self._decode_iters):
+            call = self._decode_iters.get(name)
+            if call is not None:
+                call.cancel()
+        for thread in self._decode_threads:
+            thread.join(timeout=self._timeout + BACKOFF_MAX)
+        self._decode_threads = []
+        with self._lock:
+            self._decode_lost["expired"] += len(self._early)
+            self._early = []
+
+    def _decode_loop(self, name):
+        backoff = BACKOFF_START
+        label = SPECS[name].label
+        while not self._stop_decoders.is_set():
+            try:
+                call = self._decode.start(name)
+                self._decode_iters[name] = call
+                if self._stop_decoders.is_set():
+                    call.cancel()
+                    break
+                for item in call:
+                    if self._stop_decoders.is_set():
+                        break
+                    self._take_decode(item)
+                    backoff = BACKOFF_START
+            except GrxError as err:
+                if self._stop_decoders.is_set():
+                    break
+                self._log("warn", f"{label} stream from {self._host!r} lost "
+                                  f"({self._stream_reason(err, self._decode_port, 'Receiverd')}), "
+                                  f"reconnecting in {backoff:.0f} s")
+            finally:
+                self._decode_iters[name] = None
+            if self._stop_decoders.wait(backoff):
+                break
+            backoff = min(backoff * 2, BACKOFF_MAX)
+
+    def _take_decode(self, item):
+        """Holds one decoded item until the block carrying its sample is queued. Runs on a decode thread."""
+        with self._lock:
+            previous = self._decode_device.get(item.name)
+            if previous is not None and item.dropped > previous:
+                self._decode_lost["receiver"] += item.dropped - previous
+            self._decode_device[item.name] = item.dropped
+            if not item.timed:
+                self._decode_lost["untimed"] += 1
+                return
+            self._early.append((time.monotonic(), item))
+            self._match_locked()
+        self._report_decodes()
+
+    def _match_locked(self):
+        """Places every held item that a queued block covers. The caller holds the lock."""
+        if not self._early:
+            return
+        now = time.monotonic()
+        kept = []
+        for received, item in self._early:
+            placed = self._place_locked(item)
+            if placed == "early":
+                if now - received > self._decode_delay + EARLY_GRACE:
+                    self._decode_lost["expired"] += 1
+                else:
+                    kept.append((received, item))
+                continue
+            if placed != "placed":
+                self._decode_lost[placed] += 1
+        self._early = kept
+
+    def _place_locked(self, item):
+        """'placed', 'late' (older than the queue), 'gap' (inside a lost block) or 'early' (its block is not queued)."""
+        for index, entry in enumerate(self._queue):
+            offset = _sample_offset(item.timestamp, entry.timestamp, self._samp_rate)
+            if offset < 0:
+                if index == 0:
+                    self._decode_shortfall = max(self._decode_shortfall, -offset / self._samp_rate)
+                    return "late"
+                return "gap"
+            if offset < entry.count:
+                entry.marks.append((int(offset), item.name, self._decode_keys[item.name], _decode_value(item)))
+                return "placed"
+        return "early"
+
+    def _report_decodes(self):
+        """Warns about items the buffer no longer held, at most one line per REPORT_INTERVAL."""
+        now = time.monotonic()
+        if now - self._decode_report_time < REPORT_INTERVAL:
+            return
+        late = self._decode_lost["late"] - self._decode_reported
+        if late:
+            needed = self._decode_delay + self._decode_shortfall
+            self._log("warn", f"{late} decoded items were older than the buffer in the last "
+                              f"{now - self._decode_report_time:.0f} s, raise the decode delay above "
+                              f"{needed:.2f} s")
+        self._decode_reported = self._decode_lost["late"]
+        self._decode_shortfall = 0.0
+        self._decode_report_time = now
+
+    def _decode_summary(self):
+        tagged = sum(self._decode_tagged.values())
+        per_stream = ", ".join(f"{SPECS[name].label} {self._decode_tagged[name]}"
+                               for name in self._decode_names if self._decode_tagged[name])
+        reasons = {"late": "older than the buffer", "gap": "in a lost block", "expired": "without samples",
+                   "discarded": "dropped with their blocks", "untimed": "without GPS time",
+                   "receiver": "dropped by the receiver"}
+        lost = ", ".join(f"{self._decode_lost[key]} {text}" for key, text in reasons.items() if self._decode_lost[key])
+        line = f"decoding stopped: {tagged} items tagged"
+        if per_stream:
+            line += f" ({per_stream})"
+        return line + (f", {lost}" if lost else "")
+
     # configuration
 
     def _apply_settings(self):
@@ -368,13 +592,17 @@ class grx_source(gr.sync_block):
 
     def start(self):
         self._running = True
+        self._start_decoding()
         self._start_reader()
         return True
 
     def stop(self):
         self._running = False
         self._halt_reader()
+        self._stop_decoding()
         self._log("info", self._loss_summary())
+        if self._decode is not None:
+            self._log("info", self._decode_summary())
         return True
 
     # reader thread
@@ -401,6 +629,9 @@ class grx_source(gr.sync_block):
             self._reader = None
         with self._lock:
             self._blocks_in -= len(self._queue)
+            self._decode_lost["discarded"] += sum(len(entry.marks) for entry in self._queue)
+            self._decode_lost["expired"] += len(self._early)
+            self._early = []
             self._queue.clear()
             self._queued_bytes = 0
             self._not_empty.notify_all()
@@ -468,8 +699,10 @@ class grx_source(gr.sync_block):
                 tags.append((TAG_TIMESTAMP, pmt.from_uint64(block.timestamp)))
                 tags.append((TAG_TIME, _rx_time(block.timestamp)))
                 self._resume_pending = False
-            self._queue.append((block.samples, tags))
+            self._queue.append(_Entry(block.samples, tags, block.timestamp,
+                                      len(block.samples) // BYTES_PER_SAMPLE, time.monotonic()))
             self._queued_bytes += len(block.samples)
+            self._match_locked()
             self._not_empty.notify()
         self._report_loss()
         self._refresh_properties()
@@ -483,14 +716,15 @@ class grx_source(gr.sync_block):
         while written < n:
             if self._current is None:
                 with self._lock:
-                    if not self._queue and written == 0:
+                    if not self._ready_locked() and written == 0:
                         self._not_empty.wait(POP_TIMEOUT)
-                    if not self._queue:
+                    if not self._ready_locked():
                         break
-                    samples, tags = self._queue.popleft()
-                    self._queued_bytes -= len(samples)
-                    self._pending_tags.extend(tags)
-                self._current = samples
+                    entry = self._queue.popleft()
+                    self._queued_bytes -= len(entry.samples)
+                    self._pending_tags.extend(entry.tags)
+                    self._marks = collections.deque(sorted(entry.marks, key=lambda mark: mark[0]))
+                self._current = entry.samples
                 self._offset = 0
             count = min((len(self._current) - self._offset) // BYTES_PER_SAMPLE, n - written)
             if count == 0:
@@ -503,6 +737,7 @@ class grx_source(gr.sync_block):
             else:
                 out[written:written + count] = raw.reshape(count, 2)
             self._emit_tags(written)
+            self._emit_marks(written, self._offset // BYTES_PER_SAMPLE, count)
             written += count
             self._offset += count * BYTES_PER_SAMPLE
             if self._offset >= len(self._current):
@@ -510,6 +745,19 @@ class grx_source(gr.sync_block):
         if written == 0:
             self._check_stall()
         return written
+
+    def _ready_locked(self):
+        """A queued block may leave once it has waited the decode delay, the window a decode has to arrive in."""
+        if not self._queue:
+            return False
+        return not self._decode_delay or time.monotonic() - self._queue[0].arrived >= self._decode_delay
+
+    def _emit_marks(self, written, start, count):
+        """Tags the decodes of the samples [start, start + count) of the current block at their own position."""
+        while self._marks and self._marks[0][0] < start + count:
+            index, name, key, value = self._marks.popleft()
+            self.add_item_tag(0, self.nitems_written(0) + written + max(index - start, 0), key, value)
+            self._decode_tagged[name] += 1
 
     def _check_stall(self):
         """Warns when an open stream delivers nothing for STALL_SECONDS, again every STALL_REPORT."""

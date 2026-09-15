@@ -7,12 +7,14 @@ from gnuradio import gr_unittest
 from google.protobuf import empty_pb2
 
 import fake_grx
-from gnuradio.serorx.proto import (Common_pb2, Monitord_pb2_grpc, Samplestreamingd_pb2, Samplestreamingd_pb2_grpc,
-                                   TunableChanneld_pb2, TunableChanneld_pb2_grpc)
+from gnuradio.serorx.proto import (Common_pb2, Monitord_pb2_grpc, Receiverd_pb2, Receiverd_pb2_grpc,
+                                   Samplestreamingd_pb2, Samplestreamingd_pb2_grpc, TunableChanneld_pb2,
+                                   TunableChanneld_pb2_grpc)
 
 TUNABLE = Common_pb2.RadioIdentification(band=Common_pb2.BAND_TUNABLE, per_band_index=0)
 FIXED_1090 = Common_pb2.RadioIdentification(band=Common_pb2.BAND_1090_MHZ, per_band_index=0)
-PERIOD_NS = fake_grx.BLOCK_SAMPLES * 1_000_000_000 // 12_000_000
+# The block period is not a whole number of nanoseconds, the fake rounds every timestamp down.
+PERIOD_NS = fake_grx.BLOCK_SAMPLES * 1_000_000_000 / 12_000_000
 
 
 class qa_fake_grx(gr_unittest.TestCase):
@@ -81,11 +83,38 @@ class qa_fake_grx(gr_unittest.TestCase):
         self.assertEqual([len(r.samples) for r in replies], [fake_grx.BLOCK_SAMPLES * 4] * 3)
         self.assertEqual([r.lost_blocks for r in replies], [0, 0, 0])
         stamps = [r.block_timestamp for r in replies]
-        self.assertEqual(stamps[1] - stamps[0], PERIOD_NS)
-        self.assertEqual(stamps[2] - stamps[1], PERIOD_NS)
+        self.assertAlmostEqual(stamps[1] - stamps[0], PERIOD_NS, delta=1)
+        self.assertAlmostEqual(stamps[2] - stamps[1], PERIOD_NS, delta=1)
         iq = np.frombuffer(replies[0].samples, dtype="<i2").reshape(-1, 2).astype(np.float64)
         spectrum = np.abs(np.fft.fft(iq[:, 0] + 1j * iq[:, 1]))
         self.assertEqual(int(np.argmax(spectrum)), fake_grx.BLOCK_SAMPLES // fake_grx.TONE_DIVISOR)
+
+    def test_receiverd_publishes_the_injected_frame(self):
+        """The Mode S stream carries the frame the 1090 channel puts into the samples, at its sample time."""
+        decode = Receiverd_pb2_grpc.ReceiverdStub(grpc.insecure_channel(f"127.0.0.1:{self.fake.decode_port}"))
+        call = decode.GetModeSDownlinkFrames(
+            Receiverd_pb2.GetModeSDownlinkFramesRequest(downlink_formats=range(25)))
+        items = []
+        thread = threading.Thread(target=lambda: items.append(next(call)), daemon=True)
+        thread.start()
+        time.sleep(0.2)
+        replies = list(self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(
+            radio_identification=FIXED_1090, requested_blocks=fake_grx.FRAME_EVERY)))
+        thread.join(5.0)
+        call.cancel()
+        self.assertEqual(len(items), 1)
+        frame = items[0].frame
+        self.assertEqual(frame.payload.hex().upper(), fake_grx.ADSB_FRAMES[0])
+        self.assertEqual(frame.timing_base, Receiverd_pb2.GPS_TOW)
+        self.assertEqual(frame.level_signal, fake_grx.SIGNAL_LEVEL)
+        offset = (frame.timestamp - replies[0].block_timestamp) * 12_000_000 // 1_000_000_000
+        self.assertTrue(0 <= offset < fake_grx.BLOCK_SAMPLES, offset)
+
+    def test_receiverd_rejects_an_empty_format_list(self):
+        decode = Receiverd_pb2_grpc.ReceiverdStub(grpc.insecure_channel(f"127.0.0.1:{self.fake.decode_port}"))
+        with self.assertRaises(grpc.RpcError) as ctx:
+            next(decode.GetModeSDownlinkFrames(Receiverd_pb2.GetModeSDownlinkFramesRequest()))
+        self.assertEqual(ctx.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
 
     def test_fixed_channel(self):
         props = self.stream.GetStreamProperties(Samplestreamingd_pb2.GetStreamPropertiesRequest(radio_identification=FIXED_1090))
@@ -129,14 +158,14 @@ class qa_fake_grx(gr_unittest.TestCase):
             reply = next(call)
             if reply.lost_blocks:
                 break
-            self.assertEqual(reply.block_timestamp - previous.block_timestamp, PERIOD_NS)
+            self.assertAlmostEqual(reply.block_timestamp - previous.block_timestamp, PERIOD_NS, delta=1)
             previous = reply
         after = next(call)
         call.cancel()
         self.assertEqual(reply.lost_blocks, 2)
-        self.assertEqual(reply.block_timestamp - previous.block_timestamp, 3 * PERIOD_NS)
+        self.assertAlmostEqual(reply.block_timestamp - previous.block_timestamp, 3 * PERIOD_NS, delta=1)
         self.assertEqual(after.lost_blocks, 2)
-        self.assertEqual(after.block_timestamp - reply.block_timestamp, PERIOD_NS)
+        self.assertAlmostEqual(after.block_timestamp - reply.block_timestamp, PERIOD_NS, delta=1)
 
     def test_set_sample_rate_ends_stream(self):
         call = self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(radio_identification=TUNABLE, requested_blocks=0))

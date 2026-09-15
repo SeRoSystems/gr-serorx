@@ -3,8 +3,9 @@ import sys
 
 from gnuradio import gr_unittest
 from gnuradio.serorx import _protobuf_too_old
-from gnuradio.serorx.proto import (Common_pb2, Monitord_pb2, Monitord_pb2_grpc, Samplestreamingd_pb2,
-                                   Samplestreamingd_pb2_grpc, TunableChanneld_pb2, TunableChanneld_pb2_grpc)
+from gnuradio.serorx.proto import (Common_pb2, Monitord_pb2, Monitord_pb2_grpc, Receiverd_pb2, Receiverd_pb2_grpc,
+                                   Samplestreamingd_pb2, Samplestreamingd_pb2_grpc, TunableChanneld_pb2,
+                                   TunableChanneld_pb2_grpc)
 
 
 class qa_proto(gr_unittest.TestCase):
@@ -15,7 +16,9 @@ class qa_proto(gr_unittest.TestCase):
         self.assertTrue(hasattr(TunableChanneld_pb2_grpc, "TunableChanneldStub"))
         self.assertTrue(hasattr(Samplestreamingd_pb2_grpc, "SamplestreamingdStub"))
         self.assertTrue(hasattr(Monitord_pb2_grpc, "MonitordStub"))
+        self.assertTrue(hasattr(Receiverd_pb2_grpc, "ReceiverdStub"))
         self.assertEqual(Monitord_pb2.SystemInformation(serial_number="s").serial_number, "s")
+        self.assertEqual(Receiverd_pb2.ModeSDownlinkFrame(timestamp=7, timing_base=Receiverd_pb2.GPS_TOW).timestamp, 7)
 
     def test_missing_grpcio_message(self):
         code = "import sys; sys.modules['grpc'] = None; import gnuradio.serorx"

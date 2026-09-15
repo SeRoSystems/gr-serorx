@@ -11,8 +11,10 @@ from gnuradio import blocks, gr, gr_unittest
 
 import fake_grx
 from gnuradio.serorx import grx_client
-from gnuradio.serorx.grx_source import (TAG_CALIBRATION, TAG_FREQ, TAG_LOST, TAG_RATE, TAG_TIME,
+from gnuradio.serorx.grx_decode import STREAM_NAMES
+from gnuradio.serorx.grx_source import (TAG_CALIBRATION, TAG_DECODE_PREFIX, TAG_FREQ, TAG_LOST, TAG_RATE, TAG_TIME,
                                                 TAG_TIMESTAMP, grx_source)
+from gnuradio.serorx.proto import Receiverd_pb2
 
 MODULE = importlib.import_module("gnuradio.serorx.grx_source")
 N = fake_grx.BLOCK_SAMPLES * 4
@@ -36,7 +38,7 @@ class qa_grx_source(gr_unittest.TestCase):
 
     def source(self, **kwargs):
         args = dict(host="127.0.0.1", control_port=self.fake.control_port, stream_port=self.fake.stream_port,
-                    monitor_port=self.fake.monitor_port, timeout=2.0)
+                    monitor_port=self.fake.monitor_port, decode_port=self.fake.decode_port, timeout=2.0)
         args.update(kwargs)
         return grx_source(**args)
 
@@ -434,7 +436,7 @@ class qa_grx_source(gr_unittest.TestCase):
         src._pending_tags = []
         src._start_tags = []
         with src._lock:
-            src._queue.append((b"\x00" * 6, []))
+            src._queue.append(MODULE._Entry(b"\x00" * 6, [], 0, 1, time.monotonic()))
             src._queued_bytes = 6
         out = np.zeros(100, dtype=np.complex64)
         result = []
@@ -450,6 +452,104 @@ class qa_grx_source(gr_unittest.TestCase):
             self.source(center_freq=1e6)
         closed = {type(call.args[0]) for call in close.call_args_list}
         self.assertEqual(closed, {grx_client.GrxControl, grx_client.GrxStream, grx_client.GrxMonitor})
+
+    def decode_tags(self, sink, name):
+        """Every tag of one decode stream as (offset, fields dict)."""
+        key = TAG_DECODE_PREFIX + name
+        return [(tag.offset, pmt.to_python(tag.value)) for tag in sorted(sink.tags(), key=lambda tag: tag.offset)
+                if pmt.symbol_to_string(tag.key) == key]
+
+    def test_decode_tags_sit_on_their_sample(self):
+        """Every tag lands where its timestamp says, measured from the timestamp tag of its own stream start."""
+        self.realtime_fake()
+        src = self.source(band="1090", decodes=("modes_downlink", "dme_tacan"), decode_delay=0.3, buffer_seconds=1.0)
+        sink = self.run_for(src, 1.2)
+        base, base_offset, checked = None, 0, 0
+        for tag in sorted(sink.tags(), key=lambda tag: tag.offset):
+            key = pmt.symbol_to_string(tag.key)
+            if key == TAG_TIMESTAMP:
+                base, base_offset = pmt.to_uint64(tag.value), tag.offset
+                continue
+            if not key.startswith(TAG_DECODE_PREFIX) or not pmt.is_dict(tag.value):
+                continue
+            fields = pmt.to_python(tag.value)
+            expected = base_offset + (fields["timestamp"] - base) * 12_000_000 // 1_000_000_000
+            # The fake rounds every block timestamp down to a whole nanosecond, which walks one sample per stream.
+            self.assertAlmostEqual(tag.offset, expected, delta=1)
+            checked += 1
+        self.assertGreater(checked, 0)
+
+    def test_decode_tag_carries_the_frame(self):
+        self.realtime_fake()
+        src = self.source(band="1090", decodes=("modes_downlink",), decode_delay=0.3, buffer_seconds=1.0)
+        tags = self.decode_tags(self.run_for(src, 1.2), "modes_downlink")
+        self.assertGreater(len(tags), 0)
+        offset, fields = tags[0]
+        self.assertEqual(bytes(fields["payload"]).hex().upper(), fake_grx.ADSB_FRAMES[0])
+        self.assertEqual(fields["df"], 17)
+        self.assertEqual(fields["level_signal"], fake_grx.SIGNAL_LEVEL)
+        self.assertTrue(fields["message_valid"])
+        self.assertGreater(fields["timestamp"], 0)
+
+    def test_every_stream_tags(self):
+        self.realtime_fake()
+        src = self.source(band="1090", decodes=STREAM_NAMES, decode_delay=0.3, buffer_seconds=1.0)
+        with self.console() as lines:
+            sink = self.run_for(src, 1.2)
+        for name in STREAM_NAMES:
+            self.assertGreater(len(self.decode_tags(sink, name)), 0, name)
+        summary = [text for level, text in lines if text.startswith("decoding stopped")]
+        self.assertEqual(len(summary), 1)
+        self.assertIn("Mode S downlink", summary[0])
+
+    def test_decoding_off_adds_no_tags(self):
+        sink = self.run_head(self.source(band="1090"), N)
+        keys = {TAG_DECODE_PREFIX + name for name in STREAM_NAMES}
+        self.assertFalse([tag for tag in sink.tags() if pmt.symbol_to_string(tag.key) in keys])
+
+    def test_untimed_items_are_counted(self):
+        self.realtime_fake()
+        self.fake.set_timing_base(Receiverd_pb2.SYSTEM_TIME)
+        src = self.source(band="1090", decodes=("dme_tacan",), decode_delay=0.3, buffer_seconds=1.0)
+        with self.console() as lines:
+            sink = self.run_for(src, 1.2)
+        self.assertEqual(self.decode_tags(sink, "dme_tacan"), [])
+        self.assertGreater(src._decode_lost["untimed"], 0)
+        self.assertIn("without GPS time", [text for level, text in lines if text.startswith("decoding stopped")][0])
+
+    def test_late_items_ask_for_a_longer_delay(self):
+        self.realtime_fake()
+        with self.console() as lines, mock.patch.object(MODULE, "REPORT_INTERVAL", 0.3):
+            src = self.source(band="1090", decodes=("dme_tacan",), decode_delay=0.0, buffer_seconds=0.001)
+            self.run_for(src, 1.5)
+        late = [text for level, text in lines if "older than the buffer" in text and level == "warn"]
+        self.assertGreater(len(late), 0, lines)
+        self.assertRegex(late[0], r"raise the decode delay above \d+\.\d\d s$")
+
+    def test_unreachable_receiverd_only_warns(self):
+        with self.console() as lines:
+            sink = self.run_head(self.source(band="1090", decodes=("dme_tacan",), decode_port=1, timeout=0.5), N)
+        self.assertEqual(len(sink.data()), N)
+        self.assertIn(("warn", "host '127.0.0.1' answers, but port 1 (Receiverd) is closed, "
+                               "check address and firewall. No decode tags"), lines)
+
+    def test_streams_the_receiver_does_not_report(self):
+        from gnuradio.serorx.grx_decode import SPECS
+        self.fake.set_capabilities(SPECS["modes_downlink"].capabilities)
+        with self.console() as lines:
+            self.source(band="1090", decodes=("modes_downlink", "mode5_replies", "uat_adsb"))
+        self.assertIn(("warn", "receiver does not report Mode 5 replies, UAT ADS-B, those streams stay silent"),
+                      lines)
+
+    def test_capable_streams_pass_without_a_warning(self):
+        with self.console() as lines:
+            self.source(band="1090", decodes=STREAM_NAMES)
+        self.assertFalse([text for level, text in lines if text.startswith("receiver does not report")], lines)
+
+    def test_unknown_decode_stream(self):
+        with self.assertRaises(ValueError) as caught:
+            self.source(decodes=("nothing",))
+        self.assertIn("'nothing'", str(caught.exception))
 
     def test_halt_before_stream_open_ends_reader(self):
         self.realtime_fake()

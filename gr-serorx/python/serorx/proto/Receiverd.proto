@@ -1,0 +1,2204 @@
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+package serosystems.proto.v3.grx.receiverd;
+option java_package = "de.serosystems.proto.v3.grx.receiverd";
+option java_outer_classname = "ReceiverDProto";
+// Go package is relative to the web-ui package
+// This will result in "golang.sero-systems.de/grx/web-ui/proto/.../v3
+option go_package = "proto/receiverd/v3";
+
+/* 2D Position. */
+message Position2D {
+	/* Latitude [degrees], WGS-84. */
+	double latitude = 1;
+	/* Longitude [degrees], WGS-84. */
+	double longitude = 2;
+}
+
+/* List of state vectors. */
+message StateVectorList {
+	/*
+	 * State vector.
+	 * Note: all fields having a timestamp (i.e. a ..._last_update) field should
+	 *  be checked for their validity: if the timestamp is 0, the value of the
+	 *  field is not valid.
+	*/
+	message StateVector {
+		/*
+		 * Qualified address: an address with a qualifier (e.g. ICAO24).
+		 */
+		message QualifiedAddress {
+			/* Address qualifiers. */
+			enum AddressQualifier {
+				/*
+				 * ICAO24, directly or rebroadcast, all map to the same qualified
+				 * address.
+				 * Consult the data_sources for a list of actual sources.
+				 */
+				ICAO24 = 0;
+
+				/*
+				 * The following are all non-ICAO24 addresses received via UAT.
+				 * They all map to qualified addresses that describe them further.
+				 */
+
+				/* UAT ADS-B with temporary address. */
+				UAT_ADS_B_WITH_TEMPORARY = 1;
+				/* UAT TIS-B target with track file identifier. */
+				UAT_TIS_B_TARGET_WITH_TRACK_FILE_IDENTIFIER = 2;
+				/* UAT surface vehicle. */
+				UAT_SURFACE_VEHICLE = 3;
+				/* UAT fixed ADS-B beacon. */
+				UAT_FIXED_ADS_B_BEACON = 4;
+				/* UAT ADS-R target with non-icao address. */
+				UAT_ADS_R_TARGET_WITH_NON_ICAO = 5;
+				/* UAT reserved. */
+				UAT_RESERVED = 6;
+
+				/*
+				 * The following are all non-ICAO24 addresses received via Mode-S.
+				 * They map to distinct qualified addresses; including their sources.
+				 */
+
+				/* Mode-S / ADS-B anonymous or ground vehicle or fixed obstacle. */
+				MODE_S_ADS_B_ANONYMOUS_OR_GROUND_VEHICLE_OR_FIXED_OBSTACLE = 7;
+				/* Mode-S / ADS-R anonymous or ground vehicle or fixed obstacle. */
+				MODE_S_ADS_R_ANONYMOUS_OR_GROUND_VEHICLE_OR_FIXED_OBSTACLE = 8;
+				/* Mode-S / TIS-B Mode-A and track file identifier. */
+				MODE_S_TIS_B_MODE_AC_CODE_AND_TRACK_FILE_IDENTIFIER = 9;
+				/* Mode-S / TIS-B non-icao address. */
+				MODE_S_TIS_B_NON_ICAO24 = 10;
+
+				/*
+				 * Mode S message with reserved content or in general:
+				 * when the address cannot be determined from the message.
+				 */
+				MODE_S_INVALID = 11;
+			}
+
+			/* Address qualifier. */
+			AddressQualifier aq = 1;
+
+			/* Address part of the qualified address, 24 bits. */
+			uint32 address = 2;
+		}
+
+		/* Qualified address. */
+		QualifiedAddress qualified_address = 1;
+
+		/*
+		 * Data source.
+		 */
+		enum DataSource {
+			/*
+			 * Mode S Downlink message, including DF 17 (ADS-B), excluding certain
+			 *  DF 18 message that do not carry data originating from the transmitter
+			 *  themselves.
+			 */
+			MODE_S_DL = 0;
+
+			/*
+			 * Mode S Uplink message. Set when
+			 *  1. ACAS broadcast or resolutionmessage (UF 16) is received
+			 *  2. target is selectively interrogated by another transmitter
+			 */
+			MODE_S_UL = 1;
+
+			/*
+			 * Mode S Downlink message having DF 18, with CF 2, 3, 5 or 6 (see
+			 *  DO-260B, Table 2-13).
+			 * Those are all messages where the transmitter itself does not carry the
+			 *  address, but re-broadcasts the message in some way.
+			 * Note: there is no distinction between TIS-B and ADS-R.
+			 * If the address is not an ICAO 24-bit address, the address qualifier
+			 *  may contain further information to distinguish between TIS-B and
+			 *  ADS-R.
+			 */
+			MODE_S_DL_ADS_R_TIS_B = 2;
+
+			/*
+			 * UAT ADS-B message with address qualifier 0, 1, 4 or 5.
+			 * Those contain data originating from the transmitter themselves.
+			 */
+			UAT_ADS_B = 3;
+
+			/*
+			 * UAT ADS-B message with address qualifier 2, 3 or 6.
+			 * Note: there is no distinction between TIS-B and ADS-R.
+			 * If the address is not an ICAO 24-bit address, the address qualifier
+			 *  may contain further information to distinguish between TIS-B and
+			 *  ADS-R.
+			 */
+			UAT_ADS_R_TIS_B = 4;
+		}
+
+		/*
+		 * List of data sources from which the state vector has been composed.
+		 */
+		repeated DataSource data_sources = 3;
+
+		/* Average rate of directly received (i.e. non-rebroadcasted) messages
+		 *   [1/s]. */
+		float average_message_rate_directly_received = 4;
+
+		/*
+		 * Average signal level of directly received (i.e. non-rebroadcasted)
+		 *  messages [dBm].
+		 */
+		float average_signal_level_directly_received = 5;
+
+		/* Time [s since epoch UTC] of last received arbitrary message. */
+		uint64 last_seen = 6;
+
+		/*
+		 * Decoded identification of the target, aka. call sign. Empty if not valid.
+		 */
+		string identification = 7;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the identification.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 identification_last_update = 8;
+
+		/* Whether target is on ground. */
+		bool ground_flag = 9;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the ground flag.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 ground_flag_last_update = 10;
+
+		/*
+		 * Position of the target.
+		 * Only available if position is recent.
+		 */
+		Position2D position = 11;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the position.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 position_last_update = 12;
+
+		/* Track angle [degrees] of the target. */
+		uint32 track_angle = 13;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the track angle.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 track_angle_last_update = 14;
+
+		/* Speed over ground [knots] of the target. */
+		uint32 speed_over_ground = 15;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the speed over ground.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 speed_over_ground_last_update = 16;
+
+		/* Barometric altitude [feet] of the target. */
+		int32 barometric_altitude = 17;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the barometric altitude.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 barometric_altitude_last_update = 18;
+
+		/* Geometric height [feet] of the target. */
+		int32 geometric_height = 19;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the geometric height.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 geometric_height_last_update = 20;
+
+		/* Vertical rate [feet/min] of the target. */
+		int32 vertical_rate = 21;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the vertical rate.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 vertical_rate_last_update = 22;
+
+		/*
+		 * Country, as determined by the ICAO address.
+		 * Is either the full country name (e.g. "Germany") or "unknown".
+		 */
+		string country = 23;
+
+		/* The "4096 identification code", aka. squawk. */
+		uint32 identification_code = 24;
+
+		/*
+		 * Time [s since epoch UTC] of last updating the identification code.
+		 * Is 0 if too old/not received yet.
+		 */
+		uint64 identification_code_last_update = 25;
+	}
+
+	/*
+	 * Current timestamp [s since epoch UTC], can be used to check if fields
+	 *  are up-to-date.
+	 */
+	uint64 current_timestamp = 1;
+
+	/* List of state vectors. */
+	repeated StateVector state_vectors = 2;
+}
+
+/* History (time series) of StateVectors for a single target. */
+message StateVectorHistory {
+	/*
+	 * Single data point in the time-series.
+	 * Overlaps with StateVectorList.StateVector message, but is shorter.
+	 * Note: all fields having a valid flag (i.e. a ..._valid field) should
+	 *  be checked for their validity: if the valid flag is false, the value of
+	 *  the field should not be interpreted.
+	 */
+	message DataPoint {
+		/* Time [s since epoch UTC] of this data point. */
+		uint64 timestamp = 1;
+
+		/* Average rate of directly received (i.e. non-rebroadcasted) messages
+		 *   [1/s]. */
+		float average_message_rate_directly_received = 2;
+
+		/*
+		 * Average signal level of directly received (i.e. non-rebroadcasted)
+		 *  messages [dBm].
+		 */
+		float average_signal_level_directly_received = 3;
+
+		/* Whether target is on ground. */
+		bool on_ground = 4;
+
+		/*
+		 * Whether the on_ground flag is considered valid.
+		 */
+		bool on_ground_valid = 5;
+
+		/*
+		 * Decoded identification, aka. call sign. Empty if not valid (i.e. if
+		 *  identification_valid is false).
+		 */
+		string identification = 6;
+
+		/*
+		 * Whether the identification is considered valid.
+		 */
+		bool identification_valid = 7;
+
+		/*
+		 * Track angle [degrees] of the target.
+		 */
+		uint32 track_angle = 8;
+
+		/*
+		 * Whether the track angle is considered valid.
+		 */
+		bool track_angle_valid = 9;
+
+		/* Speed over ground [knots] of the target. */
+		uint32 speed_over_ground = 10;
+
+		/* Whether speed over ground is considered valid. */
+		bool speed_over_ground_valid = 11;
+
+		/* Barometric altitude [feet] of the target. */
+		int32 barometric_altitude = 12;
+
+		/* Whether barometric altitude is considered valid. */
+		bool barometric_altitude_valid = 13;
+
+		/* Geometric height [feet] of the target. */
+		int32 geometric_height = 14;
+
+		/* Whether geometric height is considered valid. */
+		bool geometric_height_valid = 15;
+
+		/*
+		 * Position of the target.
+		 * Only available if position is considered valid.
+		 */
+		Position2D position = 16;
+
+		/* Vertical rate [feet/min] of the target. */
+		int32 vertical_rate = 17;
+
+		/* Whether vertical rate is considered valid. */
+		bool vertical_rate_valid = 18;
+
+		/* The "4096 identification code", a.k.a. squawk. */
+		uint32 identification_code = 19;
+
+		/* Whether identification_code is considered valid. */
+		bool identification_code_valid = 20;
+	}
+
+	/*
+	 * List of data points describing different points of time.
+	 * Empty if there are no such data points, e.g. if target is not tracked.
+	 */
+	repeated DataPoint data_point = 1;
+
+	/*
+	 * Current time [s since epoch UTC]. Can be used to represent the
+	 *  DataPoints' timestamps relative to the current time.
+	 */
+	uint64 current_timestamp = 2;
+}
+
+/* Range chart, computed by directly received (non-rebroadcasted) position
+ *  messages. */
+message RangeChart {
+	/*
+	 * Center of the chart, i.e. sensor position.
+	 * Note: not included if position is not available.
+	 */
+	Position2D center = 1;
+
+	/*
+	 * Reception range [m] from the center for each degree.
+	 * Exactly 360 items.
+	 */
+	repeated float ranges = 2;
+}
+
+/* Reception capabilities */
+message ReceptionCapabilities {
+	/* Capabilities. */
+	enum Capability {
+		/* Mode-S frame on downlink. */
+		DOWNLINK_MODE_S_FRAME = 0;
+		/* Mode-AC reply on downlink. */
+		DOWNLINK_MODE_AC_REPLY = 1;
+		/* Mode-4 reply on downlink. */
+		DOWNLINK_MODE_4_REPLY = 2;
+		/* Mode-5 reply on downlink. */
+		DOWNLINK_MODE_5_REPLY = 3;
+		/* DME/TACAN pulse pair on downlink. */
+		DOWNLINK_DME_TACAN_PULSE_PAIR = 4;
+		/* Isolated pulse on downlink. */
+		DOWNLINK_ISOLATED_PULSE = 5;
+		/* Mode-S frame on uplink. */
+		UPLINK_MODE_S_FRAME = 8;
+		/* Mode-1, Mode-2, Mode-A, Mode-C interrogation on uplink. */
+		UPLINK_BASIC_INTERROGATION = 9;
+		/* Mode-4 interrogation on uplink. */
+		UPLINK_MODE_4_INTERROGATION = 10;
+		/* Mode-5 interrogation on uplink. */
+		UPLINK_MODE_5_INTERROGATION = 11;
+		/* DME/TACAN pulse pair on uplink. */
+		UPLINK_DME_TACAN_PULSE_PAIR = 12;
+		/* Isolated pulse on uplink. */
+		UPLINK_ISOLATED_PULSE = 13;
+		/* UAT ADS-B message. */
+		UAT_ADS_B_MESSAGE = 16;
+		/* UAT ground uplink message. */
+		UAT_GROUND_UPLINK_MESSAGE = 17;
+		/* DME/TACAN pulse pair on UAT. */
+		UAT_DME_TACAN_PULSE_PAIR = 18;
+		/* Isolated pulse on UAT. */
+		UAT_ISOLATED_PULSE = 19;
+		/* DME/TACAN pulse pair on a generic band. */
+		GENERIC_DME_TACAN_PULSE_PAIR = 24;
+		/* Isolated pulse on a generic band. */
+		GENERIC_ISOLATED_PULSE = 25;
+	}
+
+	/* Capabilities. */
+	repeated Capability capabilities = 1;
+}
+
+/* Received signal statistics. */
+message Statistics {
+	/* Absolute message counter. */
+	message Counters {
+		/* Mode S downlink, split by DF (0-24). */
+		repeated uint64 dl_mode_s_by_df = 1;
+
+		/* Mode 1/2/A/C downlink. */
+		uint64 dl_mode_1_2_a_c_reply = 2;
+
+		/* Mode 4 downlink. */
+		uint64 dl_mode_4_reply = 3;
+
+		/* Mode 5 downlink. */
+		uint64 dl_mode_5_reply = 4;
+
+		/* Isolated pulses on 1090MHz. */
+		uint64 dl_isolated_pulse = 5;
+
+		/* DME/TACAN pulse pair on 1090MHz. */
+		uint64 dl_dme_tacan_pulse_pair = 6;
+
+		/* Mode S uplink, split by UF (0-24). */
+		repeated uint64 ul_mode_s_by_uf = 7;
+
+		/* Mode 1 uplink. */
+		uint64 ul_mode_1_interrogation = 8;
+
+		/* Mode 2 uplink. */
+		uint64 ul_mode_2_interrogation = 9;
+
+		/* Mode 4 uplink. */
+		uint64 ul_mode_4_interrogation = 10;
+
+		/* Mode 5 uplink. */
+		uint64 ul_mode_5_interrogation = 11;
+
+		/* Mode A uplink. */
+		uint64 ul_mode_a_interrogation = 12;
+
+		/* Mode C uplink. */
+		uint64 ul_mode_c_interrogation = 13;
+
+		/* Isolated pulses on 1030MHz. */
+		uint64 ul_isolated_pulse = 14;
+
+		/* DME/TACAN pulse pair on 1030MHz. */
+		uint64 ul_dme_tacan_pulse_pair = 15;
+
+		/* UAT ADS-B by payload type (0-31). */
+		repeated uint64 uat_adsb_message_by_payload_type = 16;
+
+		/* UAT ground uplink. */
+		uint64 uat_ground_uplink_message = 17;
+
+		/* UAT ground uplink information by frame type (0..15). */
+		repeated uint64 uat_ground_uplink_information_frame_by_type = 18;
+
+		/* Isolated pulses on 978 MHz. */
+		uint64 uat_isolated_pulse = 19;
+
+		/* DME/TACAN pulse pair on 978MHz. */
+		uint64 uat_dme_tacan_pulse_pair = 20;
+
+		// Signals on other bands, that is (currently) neither on Uplink (1030 MHz), Downlink (1090 MHz) or UAT (978 MHz)
+		// These are only relevant if the receiver has a radio frontend for other bands.
+
+		/* Isolated pulse on other bands */
+		uint64 other_isolated_pulse = 21;
+
+		/* DME/TACAN pulse pair on other bands */
+		uint64 other_dme_tacan_pulse_pair = 22;
+	}
+
+	/* Message rates. */
+	message Rates {
+		/* Mode S downlink, split by DF (0-24). */
+		repeated float dl_mode_s_by_df = 1;
+
+		/* Mode 1/2/A/C downlink. */
+		float dl_mode_1_2_a_c_reply = 2;
+
+		/* Mode 4 downlink. */
+		float dl_mode_4_reply = 3;
+
+		/* Mode 5 downlink. */
+		float dl_mode_5_reply = 4;
+
+		/* Isolated pulses on 1090MHz. */
+		float dl_isolated_pulse = 5;
+
+		/* DME/TACAN pulse pair on 1090MHz. */
+		float dl_dme_tacan_pulse_pair = 6;
+
+		/* Mode S uplink, split by UF (0-24). */
+		repeated float ul_mode_s_by_uf = 7;
+
+		/* Mode 1 uplink. */
+		float ul_mode_1_interrogation = 8;
+
+		/* Mode 2 uplink. */
+		float ul_mode_2_interrogation = 9;
+
+		/* Mode 4 uplink. */
+		float ul_mode_4_interrogation = 10;
+
+		/* Mode 5 uplink. */
+		float ul_mode_5_interrogation = 11;
+
+		/* Mode A uplink. */
+		float ul_mode_a_interrogation = 12;
+
+		/* Mode C uplink. */
+		float ul_mode_c_interrogation = 13;
+
+		/* Isolated pulses on 1030MHz.. */
+		float ul_isolated_pulse = 14;
+
+		/* DME/TACAN pulse pair on 1030MHz. */
+		float ul_dme_tacan_pulse_pair = 15;
+
+		/* UAT ADS-B by payload type (0-31). */
+		repeated float uat_adsb_message_by_payload_type = 16;
+
+		/* UAT ground uplink. */
+		float uat_ground_uplink_message = 17;
+
+		/* UAT ground uplink information by frame type (0..15). */
+		repeated float uat_ground_uplink_information_frame_by_type = 18;
+
+		/* Isolated pulses on 978 MHz. */
+		float uat_isolated_pulse = 19;
+
+		/* DME/TACAN pulse pair on 978MHz. */
+		float uat_dme_tacan_pulse_pair = 20;
+		// Signals on other bands, that is (currently) neither on Uplink (1030 MHz), Downlink (1090 MHz) or UAT (978 MHz)
+		// These are only relevant if the receiver has a radio frontend for other bands.
+
+		/* Isolated pulse on other bands */
+		float other_isolated_pulse = 21;
+
+		/* DME/TACAN pulse pair on other bands */
+		float other_dme_tacan_pulse_pair = 22;
+	}
+
+	/* Message counters. */
+	Counters counters = 1;
+
+	/* Message rate [1/s] over last 10 seconds. */
+	Rates rates_10s = 2;
+
+	/* Message rate [1/s] over last 60 seconds. */
+	Rates rates_60s = 3;
+
+	/* Device reception capabilities. */
+	ReceptionCapabilities reception_capabilities = 4;
+
+	/* Timestamp of the counters field in system time at time of assembly of the message.
+	 * Can be used to derive more fine-grained statistics
+	 */
+	google.protobuf.Timestamp timestamp_counters = 5;
+}
+
+/* Samples statistics, may indicate system overloads. */
+message SamplesStatistics {
+	/*
+	 * Number of sample read attempts.
+	 * Subtract the errors below to get successful attempts.
+	 */
+	uint64 read_attempts = 1;
+
+	/*
+	 * Number of attempts which failed due to deadline passed.
+	 * Signifies too high load.
+	 */
+	uint64 stale = 2;
+
+	/*
+	 * Number of other errors.
+	 * Might signify hardware/software incompatibilities.
+	 */
+	uint64 other_error = 3;
+}
+
+/* Band/Frequency a front end operates on. */
+enum Band {
+	/* Unspecified band, used when uninitialized or no other enum member matches */
+	BAND_UNSPECIFIED = 0;
+
+	/* 978 MHz band. */
+	BAND_978_MHZ = 1;
+	/* 1030 MHz band. */
+	BAND_1030_MHZ = 2;
+	/* 1090 MHz band. */
+	BAND_1090_MHZ = 3;
+
+	/* Special "band" to identify a channel that is fixed to a band/frequency that is not included here as enum member */
+	BAND_FIXED = 127;
+	/* Special "band" to identify a channel that can be tuned to different bands/frequencies */
+	BAND_TUNABLE = 128;
+
+	/* Special enum member that does not describe a band, but can be used to indicated a "match all" when matching bands */
+	BAND_MATCH_ANY = 254;
+}
+
+/*
+ * Antenna status.
+ */
+message AntennaStatus {
+	/* Unique identification of the antenna. */
+	string id = 1;
+
+	/* Human-readable label describing the antenna. */
+	string label = 2;
+
+	/* Whether power supply of the antenna can be enabled/disabled. */
+	bool has_supply_enable = 3;
+
+	/* Whether power supply should be enabled. */
+	bool supply_enable = 4;
+
+	/* Power supply faults. */
+	enum SupplyFault {
+		/* No power supply fault detection supported. */
+		NOT_SUPPORTED = 0;
+		/* No power supply fault detected. */
+		NO_FAULT_DETECTED = 1;
+		/* Power supply fault detected. */
+		FAULT_DETECTED = 2;
+	}
+
+	/* Power fault. Note: power faults can only be detected if
+	 * power_supply_enabled is true.
+	 */
+	SupplyFault supply_fault = 5;
+}
+
+/*
+ * Antenna switch status.
+ */
+message AntennaSwitchStatus {
+	/* Unique identification of the antenna switch. */
+	string id = 1;
+
+	/* Human-readable label describing the antenna switch. */
+	string label = 2;
+
+	/*
+	 * Map from state id (e.g. "combined") to label (e.g. "Combined GNSS and
+	 * Mode-S")
+	 */
+	map<string,string> state_id_to_label = 3;
+
+	/* Current state id, referenced an id in state_id_to_label. */
+	string state_id = 4;
+}
+
+/*
+ * Radio frontend status.
+ * This includes mostly low-level data, such as current gain and noise level.
+ * Different frontends can be distinguished via fields 'band' and
+ * 'per_band_index'.
+ */
+message RadioFrontEndStatus {
+	/*
+	 * Fixed external gain (before entering the receiver) [dB].
+	 * This can be used to represent the losses in the cable or the gain of
+	 *  the (active) antenna.
+	 */
+	float external_fixed_gain = 1;
+
+	/*
+	 * Fixed gain of the RX chain (beginning at the antenna input) [dB].
+	 * This excludes the rx_chain_variable_gain.
+	 */
+	float rx_chain_fixed_gain = 2;
+
+	/*
+	 * Variable gain of the RX chain [dB].
+	 * Can be used as a measure to see how the receiver did adapt to the current
+	 *  situation.
+	 */
+	float rx_chain_variable_gain = 3;
+
+	/*
+	 * Noise level [dBm].
+	 * Estimated by analyzing "zero power" positions in the preamble of Mode S
+	 *  frames.
+	 * Note that this only gets updated if valid frames are received.
+	 */
+	float noise_level = 4;
+
+	/* DC offset applied on-chip for channel I.
+	 * Deprecated, use dc_offset_correction_on_board
+	 */
+	int32 dc_offset_on_chip_i = 5 [ deprecated = true ];
+
+	/* DC offset applied on-chip for channel Q.
+	 * Deprecated, use dc_offset_correction_on_board
+	 */
+	int32 dc_offset_on_chip_q = 6 [ deprecated = true ];
+
+	/* DC offset applied in PL for channel I.
+	 * Deprecated, use dc_offset_correction_pl
+	 */
+	int32 dc_offset_pl_i = 7 [ deprecated = true ];
+
+	/* DC offset applied in PL for channel Q.
+	 * Deprecated, use dc_offset_correction_pl
+	 */
+	int32 dc_offset_pl_q = 8 [ deprecated = true ];
+
+	/*
+	 * Most recent averaged, DC corrected residual value for channel I.
+	 * Deprecated, use dc_offset_residual_measurement
+	 */
+	int32 dc_offset_last_i_residual_avg = 9 [ deprecated = true ];
+
+	/*
+	 * Most recent averaged, DC corrected residual value for channel Q.
+	 * Deprecated, use dc_offset_residual_measurement
+	 */
+	int32 dc_offset_last_q_residual_avg = 10 [ deprecated = true ];
+
+	/* Whether a DC offset calibration is performed right now.
+	 * Deprecated, use dc_offset_manually_triggered_calibration.
+	 */
+	bool dc_offset_calibration_ongoing = 11 [ deprecated = true ];
+
+	/*
+	 * Whether a DC offset calibration has been performed.
+	 * Note: if neither this nor dc_offset_calibration_ongoing is set,
+	 *  no calibration has been done since the device is running.
+	 * Deprecated, use dc_offset_manually_triggered_calibration.
+	 */
+	bool dc_offset_calibration_done = 12 [ deprecated = true ];
+
+	/* Whether DC offset calibration failed: did not converge.
+	 * Deprecated, use dc_offset_manually_triggered_calibration.
+	 */
+	bool dc_offset_calibration_no_convergence = 13 [ deprecated = true ];
+
+	/* Whether DC offset recalibration should be done.
+	 * Deprecated, use dc_offset_manually_triggered_calibration.
+	 */
+	bool dc_offset_calibration_recalibration_advised = 14 [ deprecated = true ];
+
+	/* Whether DC offset recalibration must be done.
+	 * Deprecated, use dc_offset_manually_triggered_calibration.
+	 */
+	bool dc_offset_calibration_recalibration_required = 15 [ deprecated = true ];
+
+	/* Band this radio front end operates on. */
+	Band band = 16;
+
+	/* Distinguishes front ends operating on same band/frequency. */
+	int32 per_band_index = 17;
+
+	/* Antenna id. May be empty for "unknown". */
+	string antenna_id = 18;
+
+	/*
+	 * Antenna status. May be unavailable.
+	 * Note: response GetRadioFrontEndStatusReply contains map antenna_status.
+	 *  The antenna_id above maps to the same info as this field, this is just a
+	 *  shortcut.
+	 */
+	AntennaStatus antenna_status = 19;
+
+	/*
+	 * The minimum observed level [dBm] of valid/correctly decoded signals.
+	 * Gives some hint at the currently achievable sensitivity.
+	 *
+	 * This value has usually been processed using some rudimentary statistics.
+	 *
+	 * In case the value is not available or cannot be computed
+	 * (e.g. due to missing received signals),
+	 * this field will be NAN.
+	 */
+	float minimum_observed_signal_level = 20;
+
+	/*
+	 * The estimated gain [dB] of the radio frontend.
+	 * Negative gains hint at losses in the signal chain.
+	 *
+	 * In case the value is not available or cannot be computed
+	 * (e.g. due to missing received signals),
+	 * this field will be NAN.
+	 */
+	float estimated_gain = 21;
+
+
+	message Occupancy {
+		/* The threshold [dBm] that is currently used to calculate the occupancy
+		 * A value of NAN indicates that the value is not available.
+		 */
+		float threshold = 1;
+
+		/* The occupancy [0..1] of the channel. Value is 0 if no samples are above the threshold and 1 if all are above the threshold.
+		 * A value of NAN indicates that the value is not available.
+		 */
+		float value = 2;
+	}
+
+	/* Occupancy of the channel.
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	Occupancy occupancy = 22;
+
+	message AveragePower {
+		/* The average power on the channel [dBm]
+		 * A value of NAN indicates that the value is not available.
+		 */
+		float power = 1;
+	}
+
+	/* Average power of the channel.
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	AveragePower average_power = 23;
+
+
+	message DCOffsetResidualMeasurement {
+	  	/* true iff the measurements (and thus avg_i and avg_q) are valid */
+		bool available = 1;
+
+		/** The most recent averaged, DC corrected residual value for channel I. Should be close to zero if DC offset calibration is good. */
+		int32 avg_i = 2;
+
+		/** The most recent averaged, DC corrected residual value for channel Q. Should be close to zero if DC offset calibration is good. */
+		int32 avg_q = 3;
+	}
+
+	/* Measured residual DC offset values.
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	DCOffsetResidualMeasurement dc_offset_residual_measurement = 24;
+
+	message DCOffsetCorrectionOnBoard {
+		bool available = 1;
+		/* The DC offset applied on-board for channel I */
+		int32 offset_i = 2;
+		/* The DC offset applied on-board for channel Q */
+		int32 offset_q = 3;
+	}
+	/* Correction applied on "board", which may comprise several entities that apply DC offsets.
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	DCOffsetCorrectionOnBoard dc_offset_correction_on_board = 25;
+
+	message DCOffsetCorrectionPL {
+		bool available = 1;
+		/* The DC offset applied in PL for channel I */
+		int32 offset_i = 2;
+		/* The DC offset applied in PL for channel Q */
+		int32 offset_q = 3;
+	}
+	/* Correction applied in programmable logic (PL)
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	DCOffsetCorrectionPL dc_offset_correction_pl = 26;
+
+	message DCOffsetAutomaticCalibration {
+		bool available = 1;
+		enum Status {
+			/* calibration status not known or unsupported */
+		  	UNKNOWN = 0;
+			/* indicates good calibration status (e.g. offsets within bounds and no other problems) */
+			GOOD = 1;
+
+			/* the following indicate a bad calibration status with some more details */
+
+			/* at least one of the possible compensation values (on-board) has reached its bounds, offsets cannot be completely eliminated, probably something wrong */
+			BAD_ON_BOARD_COMPENSATION_BOUNDS_REACHED = 2;
+			/* at least one of the possible compensation values (in PL) has reached its bounds, offsets cannot be completely eliminated, probably something wrong */
+			BAD_PL_COMPENSATION_BOUNDS_REACHED = 3;
+		}
+		Status status = 2;
+	}
+
+	/* Automatic DC Offset calibration
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	DCOffsetAutomaticCalibration dc_offset_automatic_calibration = 27;
+
+	message DCOffsetManuallyTriggeredCalibration {
+		bool available = 1;
+		enum Status {
+		  	/* calibration status not known or unsupported */
+			UNKNOWN = 0;
+			/* indicates that a (possibly manually triggered or initially triggered) calibration is currently ongoing */
+			ONGOING = 1;
+			/* calibration algorithm done, but did not converge, probably something wrong */
+			DONE_NO_CONVERGENCE = 2;
+			/* calibration algorithm done and good. */
+			DONE_GOOD = 3;
+			/* indicates that manually triggering a calibration is advised */
+			CALIBRATION_ADVISED = 4;
+			/* indicates that manually triggering a calibration is required */
+			CALIBRATION_REQUIRED = 5;
+		}
+		Status status = 2;
+	}
+	/* Manually triggered DC Offset calibration
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	DCOffsetManuallyTriggeredCalibration dc_offset_manually_triggered_calibration = 28;
+
+	message TunableState {
+		bool available = 1;
+		/* The center frequency this channel is tuned to. [Hz] */
+		uint32 center_frequency = 2;
+		/* The sample rate [Sps] */
+		uint32 sample_rate = 3;
+		/* The analog bandwith [Hz] */
+		uint32 bandwidth = 4;
+	}
+
+	/* If this radio frontend is tunable, contains more information about the state.
+	 * Only present if that feature is built-in, i.e. if the values can ever be populated by that receiver.
+	 */
+	TunableState tunable_state = 29;
+
+}
+
+/* Parameter for GetStateVectorRequest request. */
+message GetStateVectorHistoryRequest {
+	/* The qualified address of the requested target. */
+	StateVectorList.StateVector.QualifiedAddress address = 1;
+}
+
+/*
+ * The Mode S specific address qualifier.
+ * Mainly for use with DF 18.
+ * See DO-260B, Table 2-11.
+ */
+message QualifiedAddressModeS {
+	/* Address qualifier. */
+	enum AddressQualifier {
+		/* Mode S (or ADS-B) Target with ICAO 24 bit address. */
+		ICAO24 = 0;
+		/* TIS-B target with ICAO 24 bit address. */
+		TIS_B_ICAO24 = 1;
+		/* ADS-R target with ICAO 24 bit address. */
+		ADS_R_ICAO24 = 2;
+		/* ADS-B target with anonymous, ground vehicle or fixed obstacle address. */
+		ADS_B_ANONYMOUS_OR_GROUND_VEHICLE_OR_FIXED_OBSTACLE = 3;
+		/* ADS-R target with anonymous, ground vehicle or fixed obstacle address. */
+		ADS_R_ANONYMOUS_OR_GROUND_VEHICLE_OR_FIXED_OBSTACLE = 4;
+		/* TIS-B target with Mode A code and track file identifier. */
+		TIS_B_MODE_A_CODE_AND_TRACK_FILE_IDENTIFIER = 5;
+		/* TIS-B target with non-ICAO 24 bit address. */
+		TIS_B_NON_ICAO24 = 6;
+		/*
+		 * Invalid or reserved address; will also be used to indicated that the
+		 * address could not be determined
+		 */
+		INVALID = 7;
+
+		/*
+		 * Begin Special address qualifiers that may be used to when matching
+		 * addresses/qualifiers.
+		 */
+
+		/*
+		 * Matches addresses with any qualifier (including invalid ones) that
+		 * additionally have a matching address part.
+		 * Use this if you want to match an address, but do not care about the
+		 * exact qualifier.
+		 */
+		MATCH_ANY_QUALIFIER = 254;
+
+		/*
+		 * Matches any addresses with any qualifier (including invalid ones).
+		 * Use this to disable any filtering.
+		 */
+		MATCH_ANY_ADDRESS = 255;
+	}
+
+	/* Address qualifier. */
+	AddressQualifier aq = 1;
+
+	/* Address part of the qualified address, 24 bits */
+	uint32 address = 2;
+}
+
+
+/*
+ * The UAT specific address qualifier.
+ * See See DO-282B, 2.2.4.5.1.2
+ */
+message QualifiedAddressUAT {
+
+	/* Address qualifier. */
+	enum AddressQualifier {
+		/** "ADS-B target with ICAO 24-bit address" */
+		ADSB_TARGET_WITH_ICAO24 = 0;
+		/** "ADS-B target with self-assigned temporary address" */
+		ADSB_TARGET_WITH_SELF_ASSIGNED_TEMPORARY = 1;
+		/** "TIS-B or ADS-R target with ICAO 24-bit address" */
+		TISB_OR_ADSR_TARGET_WITH_ICAO24 = 2;
+		/** "TIS-B target with track file identifier" */
+		TISB_TARGET_WITH_TRACK_FILE_IDENTIFIER = 3;
+		/** "Surface Vehicle" */
+		SURFACE_VEHICLE = 4;
+		/** "Fixed ADS-B Beacon" */
+		FIXED_ADSB_BEACON = 5;
+		/** "ADS-R target with non-ICAO address" */
+		ADSR_TARGET_WITH_NON_ICAO = 6;
+		/** Reserved */
+		RESERVED = 7;
+
+		/*
+		 * Begin Special address qualifiers that may be used to when matching
+		 * addresses/qualifiers.
+		 */
+
+		/*
+		 * Matches addresses with any qualifier (including invalid ones) that
+		 * additionally have a matching address part.
+		 * Use this if you want to match an address, but do not care about the
+		 * exact qualifier.
+		 */
+		MATCH_ANY_QUALIFIER = 254;
+
+		/*
+		 * Matches any addresses with any qualifier (including invalid ones).
+		 * Use this to disable any filtering.
+		 */
+		MATCH_ANY_ADDRESS = 255;
+	}
+
+	/* Address qualifier. */
+	AddressQualifier aq = 1;
+
+	/* Address part of the qualified address, 24 bits */
+	uint32 address = 2;
+}
+
+/* Parameter for GetModeSDownlinkFrames request. */
+message GetModeSDownlinkFramesRequest {
+
+	/*
+	 * Single rule that enables samples for decoded frames.
+	 * Both, Address and DF, must match in order for the rule to apply
+	 *  (logic AND).
+	 */
+	message SampleEnableRule {
+		/* Qualified address to be matched */
+		QualifiedAddressModeS address = 1;
+
+		/*
+		 * Set of downlink formats to be matched.
+		 * If e.g. only 1 and 17 are put into this array, only samples of a
+		 *  frame with downlink format 1 and 17 from the specified AA will be
+		 *  relayed.
+		 * If this array is empty, this rule is not effective.
+		 * It is an error to specify downlink formats > 24.
+		 * Note also, that all given downlink formats should also be
+		 *  specified in the downlink_formats array of the
+		 *  GetModeSDownlinkFramesRequest, otherwise the frame (and thus the
+		 *  samples) won't be relayed at all.
+		 */
+		repeated uint32 downlink_formats = 2;
+	}
+
+	/*
+	 * Set of downlink formats to be relayed.
+	 * If e.g. only 1 and 17 are put into this array, only frames with df 1 and
+	 *  17 will be relayed.
+	 * It is an error to leave this array empty.
+	 * It is an error to specify downlink formats > 24.
+	 */
+	repeated uint32 downlink_formats = 1;
+
+	/*
+	 * List of rules that describe for which of the decoded frames the samples
+	 *  should be included.
+	 */
+	repeated SampleEnableRule sample_enable_rules = 2;
+
+	/* The required confirmation flags for messages to be relayed.
+	 * If the message is omitted, requires the message to be valid and the address to be tracked
+	 * (previous behavior before the introduction of this field).
+	 */
+	ModeSConfirmationFlags required_confirmation_flags = 3;
+}
+
+/* Parameter for GetModeSUplinkFrames request. */
+message GetModeSUplinkFramesRequest {
+	/*
+	 * Single rule that enables samples for decoded frames.
+	 * Both, Address and UF, must match in order for the rule to apply
+	 *  (logic AND).
+	 */
+	message SampleEnableRule {
+		/* Qualified address to be matched */
+		QualifiedAddressModeS address = 1;
+
+		/*
+		 * Set of uplink formats to be matched.
+		 * If e.g. only 0 and 16 are put into this array, only samples of a
+		 *  frame with uplink format 0 and 16 from the specified AA will be
+		 *  relayed.
+		 * If this array is empty, this rule is not effective.
+		 * It is an error to specify uplink formats > 24.
+		 * Note also, that all given uplink formats should also be
+		 *  specified in the uplink_formats array of the GetModeSUplinkFramesRequest,
+		 *  otherwise the frame (and thus the samples) won't be relayed at all.
+		 */
+		repeated uint32 uplink_formats = 2;
+	}
+
+	/*
+	 * Set of uplink formats to be relayed.
+	 * If e.g. only 1 and 16 are put into this array, only frames with uf 0 and
+	 *  16 will be relayed.
+	 * It is an error to leave this array empty.
+	 * It is an error to specify uplink formats > 24.
+	 */
+	repeated uint32 uplink_formats = 1;
+
+	/*
+	 * List of rules that describe for which of the decoded frames the samples
+	 *  should be included.
+	 */
+	repeated SampleEnableRule sample_enable_rules = 2;
+
+	/* The required confirmation flags for messages to be relayed.
+	 * If the message is omitted, requires the message to be valid and the address to be tracked
+	 * (previous behavior before the introduction of this field).
+	 */
+	ModeSConfirmationFlags required_confirmation_flags = 3;
+}
+
+/* Parameter for GetUATADSBMessages request. */
+message GetUATADSBMessagesRequest {
+
+	/*
+	 * Single rule that enables samples for decoded messages.
+	 * Both, Address and payload type code must match in order for the rule to apply
+	 *  (logic AND).
+	 */
+	message SampleEnableRule {
+		/* Qualified address to be matched */
+		QualifiedAddressUAT address = 1;
+
+		/*
+		 * Set of payload type codes to be matched.
+		 * If e.g. only 0 is put into this array, only samples of a
+		 *  Basic ADS-B message from the specified AA will be
+		 *  relayed.
+		 * If this array is empty, this rule is not effective.
+		 * It is an error to specify payload type codes > 31.
+		 * Note also, that all given payload type codes should also be
+		 *  specified in the payload_type_codes array of the
+		 *  GetUATADSBMessagesRequest, otherwise the message (and thus the
+		 *  samples) won't be relayed at all.
+		 */
+		repeated uint32 payload_type_codes = 2;
+	}
+
+	/*
+	 * Set of payload type codes to be relayed.
+	 * If e.g. only 0 is put into this array, only basic ADS-B messages
+	 *  will be relayed.
+	 * It is an error to leave this array empty.
+	 * It is an error to specify payload type codes > 31.
+	 */
+	repeated uint32 payload_type_codes = 1;
+
+	/*
+	 * List of rules that describe for which of the decoded messages the samples
+	 *  should be included.
+	 */
+	repeated SampleEnableRule sample_enable_rules = 2;
+}
+
+/* Parameter for GetUATGroundUplinkMessages request. */
+message GetUATGroundUplinkMessagesRequest {
+
+	message SampleEnableRule {
+		/*
+		 * Currently, samples can only be enabled for all ground uplink messages,
+		 *  i.e. no filtering possible.
+		 */
+		bool enable_all = 1;
+	}
+
+	/*
+	 * List of rules that describe for which of the decoded messages the samples
+	 *  should be included.
+	 */
+	repeated SampleEnableRule sample_enable_rules = 2;
+}
+
+/* Message used to enable radios by band/per_band_index */
+message RadioIdentificationEnable {
+	/* the band to enable, note that BAND_MATCH_ANY matches any band */
+	Band band = 1;
+	/* per-band-index, set to -1 to request all for the specified band */
+	int32 per_band_index = 2;
+}
+
+/* Parameter for GetDMETACANPulsePairsRequest */
+message GetDMETACANPulsePairsRequest {
+	/* List of radio identifications for which the signals are requested */
+	repeated RadioIdentificationEnable enabled_radios = 1;
+
+	/* if true, all samples are enabled */
+	bool enable_all_samples = 2;
+}
+
+/* Parameter for GetIsolatedPulsesRequest */
+message GetIsolatedPulsesRequest {
+	/* List of radio identifications for which the signals are requested */
+	repeated RadioIdentificationEnable enabled_radios = 1;
+
+	/* if true, all samples are enabled */
+	bool enable_all_samples = 2;
+}
+
+/*
+ * Time base (from where timestamp was taken).
+ * Also implies epoch for the timestamp.
+ */
+enum TimingBase {
+	/* Not based on any time base */
+	NO_BASE = 0;
+	/*
+	 * Clock advances with system clock, and is based on the system's uptime,
+	 *  i.e. advances monotonic. It only has 51 bit, thus resets each 2^51 ns,
+	 *  which is about 13 days.
+	 */
+	SYSTEM_TIME = 1;
+	/* Based on GPS Time of Week (ToW) */
+	GPS_TOW = 2;
+}
+
+/*
+ * Synchronization source.
+ */
+enum TimingSyncSource {
+	/* No valid synchronization source or not within allowed bounds */
+	NO_SOURCE = 0;
+	/* Synchronized to a Global Navigation Satellite System (GNSS) clock */
+	GNSS = 1;
+	/* Synchronized to a (local) atomic clock */
+	ATOMIC_CLOCK = 2;
+}
+
+/* Signal samples. */
+message SignalSamples {
+	/* Sample formats. */
+	enum SampleFormat {
+		/* Unspecified sample format, should not happen. */
+		Unspecified = 0x00;
+
+		/* I (12 bit signed) and Q (12 bit signed) packed into 32 bits. */
+		S12I_S12Q = 0x01;
+
+		/* I (16 bit signed) and Q (16 bit signed) packed into 32 bits */
+		S16I_S16Q = 0x02;
+
+		/* I (8 bit signed) and Q (8 bit signed) packed into 16 bits */
+		S8I_S8Q = 0x03;
+
+		/* I (8 bit signed) and Q (8 bit signed), squelch compressed.
+         * Not used at the moment. */
+		S8I_S8Q_SQUELCH_COMPRESSED = 0x04;
+	}
+
+	/* Samples bytes, must be interpreted as specified by sample_format. */
+	bytes samples = 1;
+
+	/* Sample rate [Hz]. */
+	fixed32 sample_rate = 2;
+
+	/* Sample format. */
+	SampleFormat sample_format = 3;
+
+	/* Start of data index (index into decoded samples). */
+	uint32 start_of_data = 4;
+}
+
+/* Flags that communicate the validity of Mode S messages (down- and uplink) */
+message ModeSConfirmationFlags {
+	/* True iff the address is internally tracked */
+	bool address_tracked = 1;
+
+	/* True iff message has a valid structure (depth of checks may vary) */
+	bool message_valid = 2;
+}
+
+/* Mode S Downlink Frame. */
+message ModeSDownlinkFrame {
+	/*
+	 * Timestamp [ns] of the frame.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Number of bits that have been corrected. */
+	uint32 number_corrected_bits = 4;
+
+	/* Noise level of this frame [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this frame [dBm]. */
+	float level_signal = 6;
+
+	/* Whether received carrier frequency was computed. */
+	bool carrier_frequency_offset_computed = 7;
+
+	/*
+	 * Offset of received carrier frequency from nominal carrier frequency [Hz].
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 */
+	float carrier_frequency_offset = 8;
+
+	/*
+	 * Error indicator of received carrier frequency offset computation.
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 * Smaller values signify a better estimation of the offset.
+	 * Should be a sufficiently small value (<= 0.16) to assert a meaningful
+	 *  estimation.
+	 */
+	float carrier_frequency_estimation_error = 9;
+
+	/* 14 (or 7, in case of a short frame) bytes of payload. */
+	bytes payload = 10;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 11;
+
+	/* The confirmation flags, see documentation of message for details. */
+	ModeSConfirmationFlags confirmation_flags = 12;
+}
+
+/* Mode S Uplink Frame. */
+message ModeSUplinkFrame {
+	/*
+	 * Timestamp [ns] of the frame.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Number of bits that have been corrected. */
+	uint32 number_corrected_bits = 4;
+
+	/* Noise level of this frame [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this frame [dBm]. */
+	float level_signal = 6;
+
+	/* Whether received carrier frequency was computed. */
+	bool carrier_frequency_offset_computed = 7;
+
+	/*
+	 * Offset of received carrier frequency from nominal carrier frequency [Hz].
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 */
+	float carrier_frequency_offset = 8;
+
+	/*
+	 * Error indicator of received carrier frequency offset computation.
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 * Smaller values signify a better estimation of the offset.
+	 * Should be a sufficiently small value (<= 0.16) to assert a meaningful
+	 *  estimation.
+	 */
+	float carrier_frequency_estimation_error = 9;
+
+	/* 14 (or 7, in case of a short frame) bytes of payload. */
+	bytes payload = 10;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 11;
+
+	/* The confirmation flags, see documentation of message for details. */
+	ModeSConfirmationFlags confirmation_flags = 12;
+
+}
+
+/* Mode S Downlink Frame with stream info. */
+message ModeSDownlinkFrameWithStreamInfo {
+	/* Mode S Downlink frame. */
+	ModeSDownlinkFrame frame = 1;
+
+	/*
+	 * Number of dropped frames for this stream.
+	 * Dropped frames indicate high network and/or system utilization.
+	 */
+	fixed32 frames_dropped = 2;
+}
+
+/* Mode S Uplink Frame with stream info. */
+message ModeSUplinkFrameWithStreamInfo {
+	/* Mode S Uplink frame. */
+	ModeSUplinkFrame frame = 1;
+
+	/*
+	 * Number of dropped frames for this stream.
+	 * Dropped frames indicate high network and/or system utilization.
+	 */
+	fixed32 frames_dropped = 2;
+}
+
+/* UAT ADS-B Message. */
+message UATADSBMessage {
+	/*
+	 * Timestamp [ns] of the message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Number of bits that have been corrected. */
+	uint32 number_corrected_bits = 4;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* Whether received carrier frequency was computed. */
+	bool carrier_frequency_offset_computed = 7;
+
+	/*
+	 * Offset of received carrier frequency from nominal carrier frequency [Hz].
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 */
+	float carrier_frequency_offset = 8;
+
+	/*
+	 * Error indicator of received carrier frequency offset computation.
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 * Smaller values signify a better estimation of the offset.
+	 * Should be a sufficiently small value (<= 0.16) to assert a meaningful
+	 *  estimation.
+	 */
+	float carrier_frequency_estimation_error = 9;
+
+	/* 34 (or 18, in case of a short message) bytes of payload. */
+	bytes payload = 10;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 11;
+}
+
+/* UAT ADS-B Message with stream info. */
+message UATADSBMessageWithStreamInfo {
+	/* UAT ADS-B Message. */
+	UATADSBMessage message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+
+/* UAT Ground Uplink Message. */
+message UATGroundUplinkMessage {
+	/*
+	 * Timestamp [ns] of the message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Number of bits that have been corrected. */
+	uint32 number_corrected_bits = 4;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* Whether received carrier frequency was computed. */
+	bool carrier_frequency_offset_computed = 7;
+
+	/*
+	 * Offset of received carrier frequency from nominal carrier frequency [Hz].
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 */
+	float carrier_frequency_offset = 8;
+
+	/*
+	 * Error indicator of received carrier frequency offset computation.
+	 * Only valid if carrier_frequency_offset_computed is true.
+	 * Smaller values signify a better estimation of the offset.
+	 * Should be a sufficiently small value (<= 0.16) to assert a meaningful
+	 *  estimation.
+	 */
+	float carrier_frequency_estimation_error = 9;
+
+	/* 432 bytes of payload. */
+	bytes payload = 10;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 11;
+}
+
+/* UAT Ground Uplink Message with stream info. */
+message UATGroundUplinkMessageWithStreamInfo {
+	/* UAT Ground Uplink Message. */
+	UATGroundUplinkMessage message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+/* Parameter for GetModeACDownlinkFrames request. */
+message GetModeACDownlinkFramesRequest {
+	/*
+	 * Binning mode for Mode AC frames.
+	 * As Mode AC frames are sent in bursts (and the amount of frames is very
+	 *  high), forwarding each frame on its own would generate a high load.
+	 * Because of this, Mode AC frames with the same code are grouped into bins
+	 *  of 100ms and transferred in those bins.
+	 * It is not common, that there is only a single reception of a code within
+	 *  100ms, so these binning modes act like a filter on those bins.
+	 */
+	enum BinningMode {
+		/* Forward all bins, even those containing only single receptions. */
+		ALL = 0;
+		/*
+		 * Forward only those bins which contain at least two receptions.
+		 */
+		AT_LEAST_2RECEPTIONS = 1;
+		/*
+		 * Forward only those bins which contain at least two receptions
+		 *  or (in case the is only one reception) whose code has been seen
+		 *  recently (with exponential decay).
+		 */
+		AT_LEAST_2RECEPTIONS_OR_RECENT = 2;
+	}
+
+	/* Binning mode. */
+	BinningMode binning_mode = 1;
+}
+
+/*
+ * Mode AC Downlink receptions.
+ * Message contains a burst of receptions of the same code.
+ */
+message ModeACDownlinkBinnedFrame {
+	/*
+	 * Timestamp [ns] of the primary reception, i.e. the same as the timestamp
+	 *  of the first reception within this message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base for all receptions within this message. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source for all receptions within this message. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Mode A/C code without X bit (number between 0 and 4095). */
+	fixed32 code = 4;
+
+	/* Single reception of the code. */
+	message Reception {
+		/*
+		 * Timestamp [ns] of the reception.
+		 * Also look at timing_base and timing_sync_source of outer message to
+		 *  know how to interpret the timestamp.
+		 */
+		fixed64 timestamp = 1;
+
+		/* Signal level of this reception [dBm]. */
+		float signal_level = 2;
+	}
+
+	/* Array of receptions, at least one. */
+	repeated Reception receptions = 5;
+}
+
+/* Mode AC Downlink Binned Frame with stream info. */
+message ModeACDownlinkBinnedFrameWithStreamInfo {
+	/* Mode AC Downlink binned frame. */
+	ModeACDownlinkBinnedFrame frame = 1;
+
+	/*
+	 * Number of dropped frames for this stream.
+	 * Dropped frames indicate high network and/or system utilization.
+	 */
+	fixed32 frames_dropped = 2;
+}
+
+
+/* DME/TACAN Pulse pair */
+message DMETACANPulsePair {
+
+	/*
+	 * Timestamp [ns] of the message. Referenced to rising edge of first pulse.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Possible spacing of the pulses [us] */
+	enum Spacing {
+		INVALID = 0;
+		SPACING_12_US = 12;
+		SPACING_30_US = 30;
+		SPACING_36_US = 36;
+	}
+	/* The spacing of the pulses */
+	Spacing spacing = 4;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* The band this signal was received on */
+	Band band = 7;
+
+	/* Distinguishes front ends operating on same band. */
+	int32 per_band_index = 8;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 9;
+}
+
+/* DME/TACAN Pulse pair with stream info. */
+message DMETACANPulsePairWithStreamInfo {
+	DMETACANPulsePair message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+/* Isolated pulse */
+message IsolatedPulse {
+
+	/*
+	 * Timestamp [ns] of the message. Referenced to rising edge of the pulse.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Duration of the pulse [ns] */
+	float duration = 4;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* The band this signal was received on */
+	Band band = 7;
+
+	/* Distinguishes front ends operating on same band. */
+	int32 per_band_index = 8;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 9;
+
+}
+
+/* Isolated pulse with stream info. */
+message IsolatedPulseWithStreamInfo {
+	IsolatedPulse message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+/* Parameter for GetMode4Interrogations request. */
+message GetMode4InterrogationsRequest {
+	/* if true, all samples are enabled */
+	bool enable_all_samples = 1;
+}
+
+/* Mode 4 interrogation */
+message Mode4Interrogation {
+	/*
+	 * Timestamp [ns] of the message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/*
+	 * Level of the SLS (side lobe suppression) pulse,
+	 * relative to the reported signal level [dB].
+	 *
+	 * If it contains NaN, the SLS signal has not been detected.
+	 *
+	 * If may contain negative infinity if a signal was detected but the relative level
+	 * is so low, that it cannot be represented (probably will not happen in practice).
+	 */
+	float sls_level = 7;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 8;
+
+}
+
+/* Mode 4 interrogation with stream info. */
+message Mode4InterrogationWithStreamInfo {
+	Mode4Interrogation message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+/* Parameter for GetMode4Replies request. */
+message GetMode4RepliesRequest {
+	/* if true, all samples are enabled */
+	bool enable_all_samples = 1;
+}
+
+/* Mode 4 Reply */
+message Mode4Reply {
+
+	/*
+	 * Timestamp [ns] of the message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 7;
+
+}
+
+/* Mode 4 Reply with stream info. */
+message Mode4ReplyWithStreamInfo {
+	Mode4Reply message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+/* Parameter for GetMode5Interrogations request. */
+message GetMode5InterrogationsRequest {
+	/* if true, all samples are enabled */
+	bool enable_all_samples = 1;
+}
+
+/* Mode 5 Interrogation */
+message Mode5Interrogation {
+
+	/*
+	 * Timestamp [ns] of the message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 7;
+
+}
+
+/* Mode 5 Interrogation with stream info. */
+message Mode5InterrogationWithStreamInfo {
+	Mode5Interrogation message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+/* Parameter for GetMode5Replies request. */
+message GetMode5RepliesRequest {
+	/* if true, all samples are enabled */
+	bool enable_all_samples = 1;
+}
+
+/* Mode 5 Reply */
+message Mode5Reply {
+
+	/*
+	 * Timestamp [ns] of the message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 7;
+
+}
+
+/* Mode 5 Reply with stream info */
+message Mode5ReplyWithStreamInfo {
+	Mode5Reply message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+/* Parameter for GetMode123ACInterrogations request. */
+message GetMode123ACInterrogationsRequest {
+	/* if true, all samples are enabled */
+	bool enable_all_samples = 1;
+}
+
+/* Mode 1, Mode 2 or Mode 3 A/C Interrogation */
+message Mode123ACInterrogation {
+
+	/*
+	 * Timestamp [ns] of the message.
+	 * Also look at timing_base and timing_sync_source to know how to interpret
+	 *  the timestamp.
+	 */
+	fixed64 timestamp = 1;
+
+	/* Time base. */
+	TimingBase timing_base = 2;
+
+	/* Synchronization source. */
+	TimingSyncSource timing_sync_source = 3;
+
+	/* Enum describing all modes that can be communicated */
+	enum Mode {
+		UNSPECIFIED = 0;
+		MODE_1 = 1;
+		MODE_2 = 2;
+		MODE_A = 3;
+		MODE_C = 4;
+	};
+
+	/* The mode-type of the interrogation */
+	Mode mode = 4;
+
+	/* Noise level of this message [dBm]. */
+	float level_noise = 5;
+
+	/* Signal level of this message [dBm]. */
+	float level_signal = 6;
+
+	/* Whether a Mode A/C interrogation is an all-call interrogation (set iff P4 is present) */
+	bool all_call = 7;
+
+	/* Whether a Mode A/C interrogation includes Mode S transponders (set iff P4 is long) */
+	bool include_mode_s = 8;
+
+	/* Level of the S1 (whisper-shout suppression) pulse,
+	 * relative to the reported signal level [dB].
+	 *
+	 * If it contains NaN (i.e. std::isnan of the values is true), the S1 pulse
+	 * has not been detected.
+	 *
+	 * If may contain negative infinity if a pulse was detected but the relative level
+	 * is so low, that it cannot be represented (probably will not happen in practice).
+	 */
+	float s1_level = 9;
+
+	/*
+	 * Level of the SLS (side lobe suppression) pulse,
+	 * relative to the reported signal level [dB].
+	 *
+	 * If it contains NaN, the SLS signal has not been detected.
+	 *
+	 * If may contain negative infinity if a signal was detected but the relative level
+	 * is so low, that it cannot be represented (probably will not happen in practice).
+	 */
+	float sls_level = 10;
+
+	/* Raw samples of the signal (only set if explicitly enabled). */
+	SignalSamples samples = 11;
+
+}
+
+/* Mode123ACInterrogation with stream info. */
+message Mode123ACInterrogationWithStreamInfo {
+	Mode123ACInterrogation message = 1;
+
+	/*
+	 * Number of dropped messages for this stream.
+	 * Dropped messages indicate high network and/or system utilization.
+	 */
+	fixed32 messages_dropped = 2;
+}
+
+/*
+ * Reply for GetRadioFrontEndStatus() call.
+ */
+message GetRadioFrontEndStatusReply {
+	/* Array of radio front end status: one for each front end. */
+	repeated RadioFrontEndStatus radio_front_end_status = 1;
+
+	/* Map from antenna id to antenna status. */
+	map<string, AntennaStatus> antenna_status = 2;
+
+	/* Map from antenna switch id to antenna switch status. */
+	map<string, AntennaSwitchStatus> antenna_switch_status = 3;
+}
+
+/* Receiver daemon service definition. Port 5303. */
+service Receiverd {
+	/*
+	 * Get a list of state vectors.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 * Returns DEADLINE_UNAVAILABLE if receiverd did not reply in time.
+	 */
+	rpc GetStateVectors (google.protobuf.Empty) returns (StateVectorList);
+
+	/*
+	 * Get a history of state vectors for some target.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 * Returns DEADLINE_UNAVAILABLE if receiverd did not reply in time.
+	 */
+	rpc GetStateVectorHistory (GetStateVectorHistoryRequest) returns (StateVectorHistory);
+
+	/*
+	 * Get a range chart.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 * Returns DEADLINE_UNAVAILABLE if receiverd did not reply in time.
+	 */
+	rpc GetRangeChart (google.protobuf.Empty) returns (RangeChart);
+
+	/*
+	 * Reset range chart.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 */
+	rpc ResetRangeChart (google.protobuf.Empty) returns (google.protobuf.Empty);
+
+	/*
+	 * Get received signal counters and rates.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 * Returns DEADLINE_UNAVAILABLE if receiverd did not reply in time.
+	 */
+	rpc GetStatistics (google.protobuf.Empty) returns (Statistics);
+
+	/*
+	 * Get samples statistics.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 * Returns DEADLINE_UNAVAILABLE if receiverd did not reply in time.
+	 */
+	rpc GetSamplesStatistics (google.protobuf.Empty) returns (SamplesStatistics);
+
+	/*
+	 * Get radio frontend status.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 * Returns DEADLINE_UNAVAILABLE if receiverd did not reply in time.
+	 */
+	rpc GetRadioFrontEndStatus (google.protobuf.Empty) returns (GetRadioFrontEndStatusReply);
+
+	/*
+	 * Recalibrate DC offset.
+	 * Should be done if
+	 *  rf.dc_offset_calibration_recalibration_advised or
+	 *  rf.dc_offset_calibration_recalibration_required
+	 *  for some rf as returned by GetRadioFrontEndStatus() is set.
+	 * Ongoing calibration can be monitored by
+	 *  rf.dc_offset_calibration_ongoing, see also
+	 *  documentation on the fields in RadioFrontEndStatus.
+	 * Returns UNAVAILABLE if receiverd could not be reached.
+	 */
+	rpc RecalibrateDCOffset (google.protobuf.Empty) returns (google.protobuf.Empty);
+
+	/*
+	 * Request a stream of Mode S downlink frames (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetModeSDownlinkFramesRequest
+	 */
+	rpc GetModeSDownlinkFrames (GetModeSDownlinkFramesRequest) returns (stream ModeSDownlinkFrameWithStreamInfo);
+
+	/*
+	 * Request a stream of Mode S uplink frames (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetModeSUplinkFramesRequest
+	 */
+	rpc GetModeSUplinkFrames (GetModeSUplinkFramesRequest) returns (stream ModeSUplinkFrameWithStreamInfo);
+
+	/*
+	 * Request a stream of Mode AC downlink frames (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetModeACDownlinkFramesRequest
+	 */
+	rpc GetModeACDownlinkFrames (GetModeACDownlinkFramesRequest) returns (stream ModeACDownlinkBinnedFrameWithStreamInfo);
+
+	/*
+	 * Request a stream of UAT ADS-B messages (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetModeSDownlinkFramesRequest
+	 */
+	rpc GetUATADSBMessages (GetUATADSBMessagesRequest) returns (stream UATADSBMessageWithStreamInfo);
+
+	/*
+	 * Request a stream of UAT Ground Uplink messages (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetModeSDownlinkFramesRequest
+	 */
+	rpc GetUATGroundUplinkMessages (GetUATGroundUplinkMessagesRequest) returns (stream UATGroundUplinkMessageWithStreamInfo);
+
+	/*
+	 * Request a stream of DME/TACAN pulse pairs (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetDMETACANPulsePairsRequest
+	 */
+	rpc GetDMETACANPulsePairs (GetDMETACANPulsePairsRequest) returns (stream DMETACANPulsePairWithStreamInfo);
+
+	/*
+	 * Request a stream of isolated pulses (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetIsolatedPulsesRequest
+	 */
+	rpc GetIsolatedPulses (GetIsolatedPulsesRequest) returns (stream IsolatedPulseWithStreamInfo);
+
+	/*
+	 * Request a stream of Mode 4 Interrogations (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetMode4InterrogationsRequest
+	 */
+	rpc GetMode4Interrogations (GetMode4InterrogationsRequest) returns (stream Mode4InterrogationWithStreamInfo);
+
+	/*
+	 * Request a stream of Mode 4 Replies (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetMode4RepliesRequest
+	 */
+	rpc GetMode4Replies (GetMode4RepliesRequest) returns (stream Mode4ReplyWithStreamInfo);
+
+	/*
+	 * Request a stream of Mode 5 Interrogations (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetMode5InterrogationsRequest
+	 */
+	rpc GetMode5Interrogations (GetMode5InterrogationsRequest) returns (stream Mode5InterrogationWithStreamInfo);
+
+	/*
+	 * Request a stream of Mode 5 Replies (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetMode5RepliesRequest
+	 */
+	rpc GetMode5Replies (GetMode5RepliesRequest) returns (stream Mode5ReplyWithStreamInfo);
+
+	/*
+	 * Request a stream of Mode123ACInterrogations (matching the request) from
+	 *  the server.
+	 * For reconfiguration, the call has to be cancelled.
+	 * Returns UNAVAILABLE if the service is shutting down.
+	 * Returns INVALID_ARGUMENT if request was invalid, see GetMode123ACInterrogationsRequest
+	 */
+	rpc GetMode123ACInterrogations (GetMode123ACInterrogationsRequest) returns (stream Mode123ACInterrogationWithStreamInfo);
+}

@@ -3,7 +3,7 @@ if(NOT PYTHONINTERP_FOUND)
     return()
 endif()
 
-gr_python_install(FILES __init__.py grx_client.py grx_source.py qt_msg_log.py
+gr_python_install(FILES __init__.py grx_client.py grx_decode.py grx_source.py qt_msg_log.py
     DESTINATION ${GR_PYTHON_DIR}/gnuradio/serorx)
 gr_python_install(DIRECTORY proto adsb DESTINATION ${GR_PYTHON_DIR}/gnuradio/serorx PATTERN "__pycache__" EXCLUDE)
 
@@ -26,6 +26,7 @@ GR_ADD_TEST(qa_grx_source ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa
 GR_ADD_TEST(qa_proto ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa/qa_proto.py)
 GR_ADD_TEST(qa_fake_grx ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa/qa_fake_grx.py)
 GR_ADD_TEST(qa_grx_client ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa/qa_grx_client.py)
+GR_ADD_TEST(qa_grx_decode ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa/qa_grx_decode.py)
 GR_ADD_TEST(qa_crc ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa/qa_crc.py)
 GR_ADD_TEST(qa_score ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa/qa_score.py)
 GR_ADD_TEST(qa_modes ${QA_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qa/qa_modes.py)
