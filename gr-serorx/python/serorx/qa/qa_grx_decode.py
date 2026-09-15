@@ -5,7 +5,7 @@ import grpc
 from gnuradio import gr_unittest
 
 import fake_grx
-from gnuradio.serorx.grx_client import GrxError, GrxStream, radio_id
+from gnuradio.serorx.grx_client import GrxError, GrxStream, radio_id, reachability
 from gnuradio.serorx.grx_decode import SPECS, STREAM_NAMES, GrxDecode
 from gnuradio.serorx.proto import Receiverd_pb2
 
@@ -100,7 +100,11 @@ class qa_grx_decode(gr_unittest.TestCase):
         decode = GrxDecode("127.0.0.1", self.fake.decode_port, 1.0)
         with self.assertRaises(GrxError) as caught:
             decode.statistics()
-        self.assertEqual(caught.exception.code, grpc.StatusCode.UNAVAILABLE)
+        # gRPC answers a closed port with UNAVAILABLE, and with DEADLINE_EXCEEDED where its
+        # retries outlast the deadline, which is what Windows does. reachability resolves both.
+        self.assertIn(caught.exception.code,
+                      (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED))
+        self.assertEqual(reachability(caught.exception), "refused")
         decode.close()
 
     def test_unknown_stream(self):

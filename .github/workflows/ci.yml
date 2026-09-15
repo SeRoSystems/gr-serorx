@@ -72,6 +72,9 @@ jobs:
         with:
           environment-file: ci/conda-test-env.yml
           init-shell: powershell
+          # The runner is discarded after the job. The cleanup would only warn that it cannot
+          # undo the PowerShell auto-activation it set up.
+          post-cleanup: none
       - name: Install the package
         run: micromamba install -y -n ci (Get-ChildItem output/noarch/*.conda).FullName
         shell: pwsh
