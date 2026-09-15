@@ -1,3 +1,5 @@
+import threading
+
 import numpy as np
 import pmt
 from gnuradio import blocks, gr, gr_unittest
@@ -27,14 +29,36 @@ def stream_with(frames, length=60_000, seed=5, amplitude=0.4):
     return signal
 
 
-def run_block(signal, **kwargs):
+def rx_time_tag(seconds=236_264, fraction=0.25, offset=0):
+    """An rx_time tag in the UHD shape grx_source emits: (uint64 seconds, double fraction)."""
+    tag = gr.tag_t()
+    tag.offset = offset
+    tag.key = pmt.intern("rx_time")
+    tag.value = pmt.make_tuple(pmt.from_uint64(seconds), pmt.from_double(fraction))
+    return tag
+
+
+def run_block(signal, tags=(), timeout=20.0, **kwargs):
+    """Runs the block over signal and returns the frame messages.
+
+    The run is bounded: a Python block whose work raises loses its thread, and the flowgraph then
+    never finishes. Waiting with a deadline turns that into a failure instead of a hung test.
+    """
     top = gr.top_block()
-    source = blocks.vector_source_c(signal.tolist(), False, 1, [])
+    source = blocks.vector_source_c(signal.tolist(), False, 1, list(tags))
     block = modes_demod(SAMP_RATE, **kwargs)
     sink = blocks.message_debug()
     top.connect(source, block)
     top.msg_connect(block, "frames", sink, "store")
-    top.run()
+    top.start()
+    waiter = threading.Thread(target=top.wait, daemon=True)
+    waiter.start()
+    waiter.join(timeout)
+    finished = not waiter.is_alive()
+    top.stop()
+    top.wait()
+    if not finished:
+        raise AssertionError(f"the flowgraph ran longer than {timeout:g} s, a block thread ended early")
     return [sink.get_message(i) for i in range(sink.num_messages())]
 
 
@@ -97,6 +121,15 @@ class qa_modes_blocks(gr_unittest.TestCase):
     def test_frame_count(self):
         block = modes_demod(SAMP_RATE)
         self.assertEqual(block.frame_count(), 0)
+
+
+    def test_rx_time_tag_drives_the_clock(self):
+        """The seconds of rx_time are a uint64, which pmt.to_double refuses. The block reads it anyway."""
+        signal = stream_with([(5_000, KLM1023)])
+        tagged = run_block(signal, tags=[rx_time_tag()])
+        self.assertEqual([payload(message) for message in tagged], [KLM1023])
+        self.assertEqual([payload(message) for message in run_block(signal)],
+                         [payload(message) for message in tagged])
 
 
 if __name__ == "__main__":

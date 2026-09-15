@@ -69,8 +69,9 @@ class modes_demod(gr.sync_block):
         for tag in self.get_tags_in_range(0, start, max(first + n, start), pmt.intern(TAG_TIME)):
             value = tag.value
             if pmt.is_tuple(value) and pmt.length(value) == 2:
-                return (pmt.to_double(pmt.tuple_ref(value, 0))
-                        + pmt.to_double(pmt.tuple_ref(value, 1)))
+                # rx_time carries the seconds as a uint64, which pmt.to_double refuses.
+                seconds, fraction = pmt.to_python(value)
+                return float(seconds) + float(fraction)
         return max(first, 0) / self._rate
 
     def _publish(self, frame):
