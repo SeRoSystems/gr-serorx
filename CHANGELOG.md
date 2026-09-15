@@ -1,6 +1,16 @@
 # Changelog
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## 0.7.0
+
+- `GRX Source` tags the receiver's own decoding results onto the samples
+  they were decoded from. A new decoding tab toggles any of the twelve
+  Receiverd streams
+- Each decoded item becomes one `grx_<stream>` tag, a dict of its fields
+  and its GPS timestamp, on the sample its timestamp names. Every stream
+  belongs to one band, so switch on the streams of the band the selected
+  channel receives.
+- `fake-grx/` serves Receiverd as its fourth service, with block size,
+  item rates and publication times taken from a receiver.
 
 ## 0.6.0
 
@@ -39,3 +49,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `fake-grx/`: a fake receiver serving synthetic IQ over the same gRPC
   services, for running the examples and the QA tests without hardware.
 - Debian and conda packages, both built from this repository.
+
+---
+
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
