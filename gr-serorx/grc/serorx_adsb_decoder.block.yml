@@ -5,7 +5,10 @@ flags: [python]
 
 templates:
   imports: from gnuradio.serorx import adsb
-  make: adsb.adsb_decoder(samp_rate=${samp_rate}, threshold=${threshold}, print_lines=${print_lines})
+  make: |-
+    adsb.adsb_decoder(samp_rate=${samp_rate}, correct_bits=${correct_bits},
+        alignments=${alignments}, short_replies=${short_replies}, threshold=${threshold},
+        icao_ttl=${icao_ttl}, print_lines=${print_lines})
   callbacks:
   - set_samp_rate(${samp_rate})
 
@@ -14,10 +17,30 @@ parameters:
   label: Sample rate (Sps)
   dtype: raw
   default: samp_rate
+- id: correct_bits
+  label: Bit correction
+  dtype: enum
+  default: '1'
+  options: ['0', '1', '2']
+  option_labels: ['Off', 'One bit', 'Two bits']
+- id: alignments
+  label: Alignments
+  dtype: raw
+  default: '5'
+- id: short_replies
+  label: Short replies
+  dtype: enum
+  default: 'True'
+  options: ['True', 'False']
+  option_labels: ['Decode', 'Ignore']
 - id: threshold
   label: Preamble pulse/gap ratio
   dtype: raw
-  default: 3.0
+  default: '3.0'
+- id: icao_ttl
+  label: Address memory (s)
+  dtype: raw
+  default: '60.0'
 - id: print_lines
   label: Print to console
   dtype: bool
@@ -27,24 +50,35 @@ parameters:
 
 inputs:
 - domain: stream
-  dtype: float
+  dtype: complex
 
 outputs:
 - domain: message
   id: frames
   optional: true
+- domain: message
+  id: fields
+  optional: true
 
 asserts:
 - "${ # Sample rate invalid (missing or not an even number of MSps)\nsamp_rate is not None and round(samp_rate / 1e6) >= 2 and round(samp_rate / 1e6) % 2 == 0 and abs(round(samp_rate / 1e6) * 1e6 - samp_rate) <= 1 }"
+- "${ # Alignments invalid (missing, even, or outside 1 to 11)\nalignments is not None and 1 <= alignments <= 11 and alignments % 2 == 1 }"
 - "${ # Preamble pulse/gap ratio invalid (missing or 1 or less)\nthreshold is not None and threshold > 1 }"
+- "${ # Address memory invalid (missing or 0 or less)\nicao_ttl is not None and icao_ttl > 0 }"
 
 documentation: |-
-  ADS-B decoding one block: Mode S Preamble Detector, PPM Slicer, Frame Check (DF 17 and 18,
-  single-bit correction) and ADS-B Fields. Takes a magnitude stream (Complex to Mag). Decoded lines
-  are printed and published as byte PDUs on the frames port (a QT GUI Message Log shows them as text).
-  Each line carries DF, ICAO, type code and the fields of the message: callsign, altitude, latitude
-  and longitude (once an even and an odd position message of the aircraft arrived within 10 s), speed,
-  track, airspeed, heading, vertical rate. The sample rate must be an even number of MSps and
-  follows a variable at runtime.
+  Mode S and ADS-B decoding in one block: Mode S Demod and ADS-B Fields. Takes the complex
+  baseband stream straight from the receiver, no magnitude block in front.
+
+  Accepted downlink formats are 0, 4, 5, 11, 16, 17, 18, 20 and 21. DF17 and DF18 give callsign,
+  altitude, latitude and longitude (once an even and an odd position message of the aircraft
+  arrived within 10 s), speed, track, airspeed, heading and vertical rate. DF0, 4, 16 and 20 give
+  altitude, DF5 and DF21 the squawk, DF11 the capability. The short replies overlay the address on
+  their parity field and appear only once their aircraft has been heard from within Address
+  memory.
+
+  Decoded lines are printed and published as byte PDUs on frames (a QT GUI Message Log shows them
+  as text). The same content leaves as dicts on fields. The sample rate must be an even number of
+  MSps and follows a variable at runtime.
 
 file_format: 1

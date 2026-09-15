@@ -2,6 +2,28 @@
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.6.0
+
+- Ported readasb (GPL-3.0, see Credits in the README) to python as a
+  better decoding chain for the ADS-B blocks.
+- Mode S decoding is two blocks: `modes_demod` takes
+  the complex baseband stream and emits validated frames, `adsb_fields`
+  decodes them to text lines and field dicts. `adsb_decoder` combines
+  both. The complex to magintude block is no longer needed.
+- Accepted downlink formats are 0, 4, 5, 11, 16, 17, 18, 20 and 21,
+  previously only 17 and 18.
+- Each preamble candidate is sliced at five sample offsets and the
+  reading with the highest score wins. The CRC syndrome repairs one
+  flipped bit by default or through a setting none or two.
+- Short replies overlay the aircraft address on their parity field. They
+  are validated against the addresses of extended squitters heard in the
+  last minute, so appear only once its aircraft has been seen.
+- The preamble threshold measures against the gaps inside each candidate,
+  so a strong frame does not mask a weak one elsewhere in the block.
+- `modes_preamble`, `modes_slicer` and `modes_frame_check` are gone.
+  Flowgraphs built on them connect to `modes_demod` instead, taking the
+  complex stream rather than a magnitude stream.
+
 ## 0.5.0
 
 - `GRX Source` (`serorx.grx_source`): streams IQ from one channel (1030,

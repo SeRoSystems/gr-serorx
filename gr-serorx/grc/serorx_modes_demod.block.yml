@@ -1,0 +1,67 @@
+id: serorx_modes_demod
+label: Mode S Demod
+category: '[SeRo RX]/ADS-B'
+
+templates:
+  imports: from gnuradio.serorx import adsb
+  make: |-
+    adsb.modes_demod(${samp_rate}, ${correct_bits}, ${alignments}, ${short_replies},
+        ${threshold}, ${icao_ttl})
+  callbacks:
+    - set_samp_rate(${samp_rate})
+
+parameters:
+  - id: samp_rate
+    label: Sample Rate (Sps)
+    dtype: raw
+    default: samp_rate
+  - id: correct_bits
+    label: Bit Correction
+    dtype: enum
+    default: '1'
+    options: ['0', '1', '2']
+    option_labels: ['Off', 'One bit', 'Two bits']
+  - id: alignments
+    label: Alignments
+    dtype: raw
+    default: '5'
+  - id: short_replies
+    label: Short Replies
+    dtype: enum
+    default: 'True'
+    options: ['True', 'False']
+    option_labels: ['Decode', 'Ignore']
+  - id: threshold
+    label: Preamble Threshold
+    dtype: raw
+    default: '3.0'
+  - id: icao_ttl
+    label: Address Memory (s)
+    dtype: raw
+    default: '60.0'
+
+inputs:
+  - domain: stream
+    dtype: complex
+
+outputs:
+  - domain: message
+    id: frames
+
+asserts:
+  - "${ # Sample rate must be an even number of MSps\nsamp_rate is not None and int(round(samp_rate / 1e6)) >= 2 and int(round(samp_rate / 1e6)) % 2 == 0 and abs(int(round(samp_rate / 1e6)) * 1e6 - samp_rate) < 1 }"
+  - "${ # Alignments must be an odd number from 1 to 11\nalignments is not None and 1 <= alignments <= 11 and alignments % 2 == 1 }"
+  - "${ # Preamble threshold must be above 1\nthreshold is not None and threshold > 1 }"
+  - "${ # Address memory must be above 0\nicao_ttl is not None and icao_ttl > 0 }"
+
+documentation: |-
+  Decodes Mode S frames from a complex baseband stream at an even number of MSps.
+
+  Accepted downlink formats are 0, 4, 5, 11, 16, 17, 18, 20 and 21. The short replies overlay the
+  address on their parity field and are validated against the addresses of extended squitters
+  heard within Address Memory, so they appear only once their aircraft has been seen.
+
+  Each candidate is sliced at Alignments sample offsets and the reading with the highest score
+  wins. Bit Correction repairs one or two flipped bits from the CRC syndrome.
+
+file_format: 1

@@ -28,11 +28,11 @@ outputs:
   optional: true
 
 documentation: |-
-  Decodes DF17 and DF18 frames (a PDU with the 14 bytes from the Mode S Frame Check, a PDU with 28 hex
-  characters, or a hex string). lines carries one text line per frame as a byte PDU: time, DF, ICAO,
-  type code, then callsign, altitude, latitude and longitude (once an even and an odd position message
-  of the aircraft arrived within 10 s), speed, track, airspeed, heading, vertical rate. fields carries
-  the same as a dict with df, icao, tc, frame (the 14 bytes) and time. Any other message is dropped
-  with one warning.
+  Decodes the frames from Mode S Demod. lines carries one text line per frame as a byte PDU:
+  time, downlink format, address, then the fields. DF17 and DF18 add the type code, callsign,
+  altitude, latitude and longitude (once an even and an odd position message of the aircraft
+  arrived within 10 s), speed, track, airspeed, heading and vertical rate. DF0, 4, 16 and 20 give
+  altitude, DF5 and DF21 the squawk, DF11 the capability. fields carries the same as a dict with
+  df, icao, frame, score, level, errors and time. Any other message is dropped with one warning.
 
 file_format: 1

@@ -65,5 +65,54 @@ class qa_adsb(gr_unittest.TestCase):
         self.assertIn("speed", decoder.decode(VELOCITY_GS, 21.0))
 
 
+class qa_short_reply_fields(gr_unittest.TestCase):
+    """The 13 bit field is C1 A1 C2 A2 C4 A4 M/X B1 D1/Q B2 D2 B4 D4, at bits 20 to 32."""
+
+    # Q set, M clear. The 11 bits left after removing M and Q are 1040, so 1040 * 25 - 1000.
+    ALTITUDE_FIELD = "1000000110000"
+    ALTITUDE_FRAME = "20001030000000"          # DF4 carrying the field above
+    # A1 A2 A4 give 7, B2 B4 give 6, no C bit gives 0, D1 gives 1.
+    SQUAWK_FIELD = "0101010011010"
+    SQUAWK_FRAME = "28000A9A000000"            # DF5 carrying the field above
+
+    def test_ac13_q_bit_path(self):
+        self.assertEqual(message.ac13_from_field(self.ALTITUDE_FIELD), 25000)
+
+    def test_ac13_metric_is_none(self):
+        metric = self.ALTITUDE_FIELD[:6] + "1" + self.ALTITUDE_FIELD[7:]
+        self.assertIsNone(message.ac13_from_field(metric))
+
+    def test_ac13_gillham_path_strips_the_m_bit(self):
+        # Q clear leaves a 12 bit Gillham code once M is removed. Removing M is the only work
+        # this branch does, so the result must equal the existing decoder on those 12 bits.
+        # Both codes below keep M and Q clear. The altitude itself is whatever the Gillham
+        # decoder reads, which this test does not restate.
+        field = "001010" + "0" + "100100"
+        self.assertEqual(message.ac13_from_field(field), message.gillham("001010" + "100100"))
+
+    def test_ac13_invalid_gillham_is_none(self):
+        # C1 C2 C4 all clear gives a hundreds digit of 0, which no valid code uses.
+        self.assertIsNone(message.ac13_from_field("000000" + "0" + "100100"))
+
+    def test_squawk(self):
+        self.assertEqual(message.squawk_from_field(self.SQUAWK_FIELD), "7601")
+
+    def test_squawk_zero_is_none(self):
+        self.assertIsNone(message.squawk_from_field("0" * 13))
+
+    def test_altitude_from_a_whole_frame(self):
+        self.assertEqual(message.df(self.ALTITUDE_FRAME), 4)
+        self.assertEqual(message.ac13_altitude(self.ALTITUDE_FRAME), 25000)
+
+    def test_squawk_from_a_whole_frame(self):
+        self.assertEqual(message.df(self.SQUAWK_FRAME), 5)
+        self.assertEqual(message.id13_squawk(self.SQUAWK_FRAME), "7601")
+
+    def test_capability(self):
+        frame = "5D4840D6000000"
+        self.assertEqual(message.df(frame), 11)
+        self.assertEqual(message.capability(frame), 5)
+
+
 if __name__ == "__main__":
     gr_unittest.run(qa_adsb)

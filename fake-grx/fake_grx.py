@@ -15,7 +15,7 @@ import grpc
 import numpy as np
 from google.protobuf import empty_pb2
 
-from gnuradio.serorx.adsb import modes
+from gnuradio.serorx.adsb import crc, modes
 from gnuradio.serorx.grx_client import HARDWARE_KEY, IMAGE_KEY, MODEL_KEY
 from gnuradio.serorx.proto import (Common_pb2, Monitord_pb2, Monitord_pb2_grpc, Samplestreamingd_pb2, Samplestreamingd_pb2_grpc,
                                    TunableChanneld_pb2, TunableChanneld_pb2_grpc)
@@ -34,8 +34,13 @@ NOISE_SIGMA = 50.0
 TONE_DIVISOR = 8
 SLOW_CONSUMER_SECONDS = 1.0
 MAX_AMPLITUDE = 30000.0
+# A DF4 altitude reply carrying 25000 ft, parity overlaid with the address of the first frame.
+# It follows that frame in the cycle, so the decoder has the address when the reply arrives.
+REPLY_BODY = bytes.fromhex("20001030")
+ADSB_REPLY = (REPLY_BODY + (crc.checksum(REPLY_BODY + b"\x00" * 3, 56)
+                            ^ 0x4840D6).to_bytes(3, "big")).hex().upper()
 ADSB_FRAMES = ("8D4840D6202CC371C32CE0576098", "8D40621D58C382D690C8AC2863A7",
-               "8D40621D58C386435CC412692AD6", "8D485020994409940838175B284F")
+               "8D40621D58C386435CC412692AD6", "8D485020994409940838175B284F", ADSB_REPLY)
 FRAME_EVERY = 40
 FRAME_AMPLITUDE = (400.0, 3000.0)
 MARGINAL_BIT_PROBABILITY = 0.3
@@ -224,7 +229,8 @@ class _Samplestreamingd(Samplestreamingd_pb2_grpc.SamplestreamingdServicer):
                     level = float(rng.uniform(*FRAME_AMPLITUDE))
                     frame = modes.synthesize(ADSB_FRAMES[(block // FRAME_EVERY) % len(ADSB_FRAMES)], spu, level)
                     if rng.random() < MARGINAL_BIT_PROBABILITY:
-                        s0 = (modes.PREAMBLE_US + int(rng.integers(0, modes.FRAME_BITS))) * spu
+                        bits = len(frame) // spu - modes.PREAMBLE_US
+                        s0 = (modes.PREAMBLE_US + int(rng.integers(0, bits))) * spu
                         frame[s0:s0 + spu] = np.where(frame[s0:s0 + spu] > 0, 0.37 * level, 0.35 * level)
                     at = int(rng.integers(0, BLOCK_SAMPLES - len(frame)))
                     iq[at:at + len(frame), 0] += frame

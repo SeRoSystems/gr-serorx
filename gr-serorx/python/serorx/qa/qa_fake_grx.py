@@ -96,19 +96,29 @@ class qa_fake_grx(gr_unittest.TestCase):
         self.assertEqual(ctx.exception.code(), grpc.StatusCode.INVALID_ARGUMENT)
 
     def test_1090_channel_carries_adsb_frames(self):
-        from gnuradio.serorx.adsb import modes
+        from gnuradio.serorx.adsb import demod
         replies = list(self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(radio_identification=FIXED_1090, requested_blocks=3 * fake_grx.FRAME_EVERY)))
         raw = np.frombuffer(b"".join(r.samples for r in replies), dtype="<i2").astype(np.float32)
         mag = np.abs(raw[0::2] + 1j * raw[1::2]).astype(np.float32)
-        valid = []
-        for s in modes.candidates(mag, 12):
-            frame, confidence = modes.slice_frame(mag[s:s + 1440], 12)
-            if not modes.check(frame):
-                frame = modes.correct(frame, confidence) or frame
-            if modes.check(frame):
-                valid.append(frame.hex().upper())
+        valid = [frame.data.hex().upper() for frame in demod.Demod(12).process(mag, 0, 0.0)]
         self.assertGreaterEqual(len(valid), 3)
         self.assertTrue(set(valid) <= set(fake_grx.ADSB_FRAMES), valid)
+
+    def test_1090_channel_carries_a_short_reply(self):
+        # The DF4 reply carries no parity of its own. It decodes only because the DF17 frame from
+        # the same aircraft comes earlier in the cycle and fills the address filter.
+        from gnuradio.serorx.adsb import demod
+        blocks = 6 * fake_grx.FRAME_EVERY
+        replies = list(self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(radio_identification=FIXED_1090, requested_blocks=blocks)))
+        raw = np.frombuffer(b"".join(r.samples for r in replies), dtype="<i2").astype(np.float32)
+        mag = np.abs(raw[0::2] + 1j * raw[1::2]).astype(np.float32)
+        frames = demod.Demod(12).process(mag, 0, 0.0)
+        formats = {frame.df for frame in frames}
+        self.assertIn(17, formats)
+        self.assertIn(4, formats)
+        reply = next(frame for frame in frames if frame.df == 4)
+        self.assertEqual(reply.icao, 0x4840D6)
+        self.assertEqual(reply.data.hex().upper(), fake_grx.ADSB_REPLY)
 
     def test_inject_lost_blocks(self):
         call = self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(radio_identification=TUNABLE, requested_blocks=0))

@@ -1,34 +1,34 @@
-"""ADS-B decoder: the four Mode S and ADS-B stages wired into one block."""
+"""ADS-B decoder: Mode S demodulation and field decoding wired into one block."""
 from gnuradio import gr
 
 from .adsb_fields import adsb_fields
-from .modes_frame_check import modes_frame_check
-from .modes_preamble import modes_preamble
-from .modes_slicer import modes_slicer
+from .modes_demod import modes_demod
 
 
 class adsb_decoder(gr.hier_block2):
-    """Sink for a magnitude stream. Prints decoded ADS-B lines and publishes them as byte PDUs on `frames`.
+    """Sink for a complex baseband stream. Prints decoded lines and publishes them on `frames`.
 
-    Inside: modes_preamble, modes_slicer, modes_frame_check (DF 17 and 18, single-bit correction),
-    adsb_fields. samp_rate must be an even number of MSps. threshold is the preamble pulse to gap ratio.
+    Inside: modes_demod and adsb_fields. samp_rate must be an even number of MSps. The decoded
+    fields also leave as dicts on `fields`.
     """
 
-    def __init__(self, samp_rate=12e6, threshold=3.0, print_lines=True):
-        gr.hier_block2.__init__(self, "adsb_decoder", gr.io_signature(1, 1, gr.sizeof_float), gr.io_signature(0, 0, 0))
+    def __init__(self, samp_rate=12e6, correct_bits=1, alignments=5, short_replies=True,
+                 threshold=3.0, icao_ttl=60.0, print_lines=True):
+        gr.hier_block2.__init__(self, "adsb_decoder",
+                                gr.io_signature(1, 1, gr.sizeof_gr_complex),
+                                gr.io_signature(0, 0, 0))
         self.message_port_register_hier_out("frames")
-        self.preamble = modes_preamble(samp_rate, threshold)
-        self.slicer = modes_slicer()
-        self.check = modes_frame_check()
+        self.message_port_register_hier_out("fields")
+        self.demod = modes_demod(samp_rate, correct_bits, alignments, short_replies, threshold,
+                                 icao_ttl)
         self.fields = adsb_fields(print_lines)
-        self.connect(self, self.preamble)
-        self.msg_connect((self.preamble, "windows"), (self.slicer, "windows"))
-        self.msg_connect((self.slicer, "bits"), (self.check, "bits"))
-        self.msg_connect((self.check, "frames"), (self.fields, "frames"))
+        self.connect(self, self.demod)
+        self.msg_connect((self.demod, "frames"), (self.fields, "frames"))
         self.msg_connect((self.fields, "lines"), (self, "frames"))
+        self.msg_connect((self.fields, "fields"), (self, "fields"))
 
     def frame_count(self):
-        return self.check.frame_count()
+        return self.demod.frame_count()
 
     def set_samp_rate(self, samp_rate):
-        self.preamble.set_samp_rate(samp_rate)
+        self.demod.set_samp_rate(samp_rate)

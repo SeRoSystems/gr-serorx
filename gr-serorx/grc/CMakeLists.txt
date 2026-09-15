@@ -8,9 +8,7 @@
 
 install(FILES
     serorx_grx_source.block.yml
-    serorx_modes_preamble.block.yml
-    serorx_modes_slicer.block.yml
-    serorx_modes_frame_check.block.yml
+    serorx_modes_demod.block.yml
     serorx_adsb_fields.block.yml
     serorx_adsb_decoder.block.yml
     serorx_qt_msg_log.block.yml DESTINATION share/gnuradio/grc/blocks)

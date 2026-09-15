@@ -189,3 +189,50 @@ class Decoder:
                  if all(now - stamp > FORGET_SECONDS for _, stamp in pair.values())]
         for address in stale:
             del self._positions[address]
+
+
+AC13_START = 19                                # bits 20 to 32, zero based
+AC13_BITS = 13
+
+
+def ac13_from_field(field):
+    """Altitude in feet from the 13 bit AC field. None for a metric or invalid code.
+
+    The field is C1 A1 C2 A2 C4 A4 M B1 D1 B2 D2 B4 D4. M selects metres, which is not decoded.
+    Q selects 25 ft steps, where the remaining 11 bits are a plain integer. Q clear leaves the
+    12 bits after M as a Gillham code, the layout `gillham` reads.
+    """
+    if field[6] == "1":                        # M, metres
+        return None
+    if field[8] == "1":                        # Q, 25 ft steps
+        return int(field[:6] + field[7] + field[9:], 2) * 25 - 1000
+    return gillham(field[:6] + field[7:])
+
+
+def squawk_from_field(field):
+    """The four digit squawk from the 13 bit ID field. None for an all zero code.
+
+    The field is C1 A1 C2 A2 C4 A4 X B1 D1 B2 D2 B4 D4. Each digit reads its 1, 2 and 4 bits.
+    """
+    a = int(field[1]) + 2 * int(field[3]) + 4 * int(field[5])
+    b = int(field[7]) + 2 * int(field[9]) + 4 * int(field[11])
+    c = int(field[0]) + 2 * int(field[2]) + 4 * int(field[4])
+    d = int(field[8]) + 2 * int(field[10]) + 4 * int(field[12])
+    if not (a or b or c or d):
+        return None
+    return f"{a}{b}{c}{d}"
+
+
+def ac13_altitude(msg):
+    """Altitude in feet of a DF0, DF4, DF16 or DF20 reply."""
+    return ac13_from_field(bits(msg)[AC13_START:AC13_START + AC13_BITS])
+
+
+def id13_squawk(msg):
+    """Squawk of a DF5 or DF21 reply."""
+    return squawk_from_field(bits(msg)[AC13_START:AC13_START + AC13_BITS])
+
+
+def capability(msg):
+    """The CA field of a DF11 all call reply, bits 6 to 8."""
+    return int(bits(msg)[5:8], 2)

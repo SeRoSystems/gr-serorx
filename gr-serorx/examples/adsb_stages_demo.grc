@@ -53,22 +53,6 @@ blocks:
     coordinate: [344, 16.0]
     rotation: 0
     state: enabled
-- name: blocks_complex_to_mag_0
-  id: blocks_complex_to_mag
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    vlen: '1'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [368, 296.0]
-    rotation: 0
-    state: enabled
 - name: log_fields
   id: serorx_qt_msg_log
   parameters:
@@ -82,23 +66,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1600, 296.0]
-    rotation: 0
-    state: enabled
-- name: log_hex
-  id: serorx_qt_msg_log
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    gui_hint: 'tabs@2: [1, 0, 1, 1]'
-    max_lines: '500'
-    title: Frames with a valid CRC
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1376, 304.0]
+    coordinate: [904, 344.0]
     rotation: 0
     state: enabled
 - name: log_overview
@@ -114,7 +82,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1600, 216.0]
+    coordinate: [904, 264.0]
     rotation: 0
     state: enabled
 - name: qtgui_waterfall_sink_x_0
@@ -168,14 +136,14 @@ blocks:
     name: '""'
     nconnections: '1'
     showports: 'False'
-    type: float
+    type: complex
     update_time: '0.10'
     wintype: window.WIN_BLACKMAN_hARRIS
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [576, 376.0]
+    coordinate: [424, 416.0]
     rotation: 0
     state: enabled
 - name: serorx_adsb_fields_0
@@ -191,7 +159,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1376, 232.0]
+    coordinate: [680, 280.0]
     rotation: 0
     state: enabled
 - name: serorx_grx_source_0
@@ -224,53 +192,25 @@ blocks:
     coordinate: [120, 256.0]
     rotation: 0
     state: enabled
-- name: serorx_modes_frame_check_0
-  id: serorx_modes_frame_check
-  parameters:
-    accepted: 17,18
-    affinity: ''
-    alias: ''
-    comment: ''
-    correct: 'True'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1112, 248.0]
-    rotation: 0
-    state: enabled
-- name: serorx_modes_preamble_0
-  id: serorx_modes_preamble
+- name: serorx_modes_demod_0
+  id: serorx_modes_demod
   parameters:
     affinity: ''
     alias: ''
+    alignments: '5'
     comment: ''
+    correct_bits: '1'
+    icao_ttl: '60.0'
     maxoutbuf: '0'
     minoutbuf: '0'
     samp_rate: samp_rate
+    short_replies: 'True'
     threshold: '3.0'
   states:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [576, 280.0]
-    rotation: 0
-    state: enabled
-- name: serorx_modes_slicer_0
-  id: serorx_modes_slicer
-  parameters:
-    affinity: ''
-    alias: ''
-    comment: ''
-    maxoutbuf: '0'
-    minoutbuf: '0'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [864, 280.0]
+    coordinate: [440, 248.0]
     rotation: 0
     state: enabled
 - name: tabs
@@ -307,213 +247,13 @@ blocks:
     coordinate: [472, 16.0]
     rotation: 0
     state: enabled
-- name: time_accepted
-  id: qtgui_time_sink_x
-  parameters:
-    affinity: ''
-    alias: ''
-    alpha1: '1.0'
-    alpha10: '1.0'
-    alpha2: '1.0'
-    alpha3: '1.0'
-    alpha4: '1.0'
-    alpha5: '1.0'
-    alpha6: '1.0'
-    alpha7: '1.0'
-    alpha8: '1.0'
-    alpha9: '1.0'
-    autoscale: 'False'
-    axislabels: 'True'
-    color1: blue
-    color10: dark blue
-    color2: red
-    color3: green
-    color4: black
-    color5: cyan
-    color6: magenta
-    color7: yellow
-    color8: dark red
-    color9: dark green
-    comment: ''
-    ctrlpanel: 'False'
-    entags: 'True'
-    grid: 'False'
-    gui_hint: 'tabs@2: [0, 0, 1, 1]'
-    label1: Signal 1
-    label10: Signal 10
-    label2: Signal 2
-    label3: Signal 3
-    label4: Signal 4
-    label5: Signal 5
-    label6: Signal 6
-    label7: Signal 7
-    label8: Signal 8
-    label9: Signal 9
-    legend: 'True'
-    marker1: '-1'
-    marker10: '-1'
-    marker2: '-1'
-    marker3: '-1'
-    marker4: '-1'
-    marker5: '-1'
-    marker6: '-1'
-    marker7: '-1'
-    marker8: '-1'
-    marker9: '-1'
-    name: '"Last accepted frame"'
-    nconnections: '1'
-    size: '1440'
-    srate: samp_rate
-    stemplot: 'False'
-    style1: '1'
-    style10: '1'
-    style2: '1'
-    style3: '1'
-    style4: '1'
-    style5: '1'
-    style6: '1'
-    style7: '1'
-    style8: '1'
-    style9: '1'
-    tr_chan: '0'
-    tr_delay: '0'
-    tr_level: '0.0'
-    tr_mode: qtgui.TRIG_MODE_FREE
-    tr_slope: qtgui.TRIG_SLOPE_POS
-    tr_tag: '""'
-    type: msg_float
-    update_time: '0.10'
-    width1: '1'
-    width10: '1'
-    width2: '1'
-    width3: '1'
-    width4: '1'
-    width5: '1'
-    width6: '1'
-    width7: '1'
-    width8: '1'
-    width9: '1'
-    ylabel: Magnitude
-    ymax: '0.002'
-    ymin: '0'
-    yunit: '""'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1376, 376.0]
-    rotation: 0
-    state: enabled
-- name: time_confidence
-  id: qtgui_time_sink_x
-  parameters:
-    affinity: ''
-    alias: ''
-    alpha1: '1.0'
-    alpha10: '1.0'
-    alpha2: '1.0'
-    alpha3: '1.0'
-    alpha4: '1.0'
-    alpha5: '1.0'
-    alpha6: '1.0'
-    alpha7: '1.0'
-    alpha8: '1.0'
-    alpha9: '1.0'
-    autoscale: 'False'
-    axislabels: 'True'
-    color1: blue
-    color10: dark blue
-    color2: red
-    color3: green
-    color4: black
-    color5: cyan
-    color6: magenta
-    color7: yellow
-    color8: dark red
-    color9: dark green
-    comment: ''
-    ctrlpanel: 'False'
-    entags: 'True'
-    grid: 'True'
-    gui_hint: tabs@1
-    label1: Signal 1
-    label10: Signal 10
-    label2: Signal 2
-    label3: Signal 3
-    label4: Signal 4
-    label5: Signal 5
-    label6: Signal 6
-    label7: Signal 7
-    label8: Signal 8
-    label9: Signal 9
-    legend: 'False'
-    marker1: '0'
-    marker10: '-1'
-    marker2: '-1'
-    marker3: '-1'
-    marker4: '-1'
-    marker5: '-1'
-    marker6: '-1'
-    marker7: '-1'
-    marker8: '-1'
-    marker9: '-1'
-    name: '"Confidence per bit, sign is the bit value"'
-    nconnections: '1'
-    size: '112'
-    srate: 1e6
-    stemplot: 'False'
-    style1: '0'
-    style10: '1'
-    style2: '1'
-    style3: '1'
-    style4: '1'
-    style5: '1'
-    style6: '1'
-    style7: '1'
-    style8: '1'
-    style9: '1'
-    tr_chan: '0'
-    tr_delay: '0'
-    tr_level: '0.0'
-    tr_mode: qtgui.TRIG_MODE_FREE
-    tr_slope: qtgui.TRIG_SLOPE_POS
-    tr_tag: '""'
-    type: msg_float
-    update_time: '0.5'
-    width1: '1'
-    width10: '1'
-    width2: '1'
-    width3: '1'
-    width4: '1'
-    width5: '1'
-    width6: '1'
-    width7: '1'
-    width8: '1'
-    width9: '1'
-    ylabel: Confidence
-    ymax: '1'
-    ymin: '-1'
-    yunit: '""'
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [1112, 376.0]
-    rotation: 0
-    state: enabled
 
 connections:
-- [blocks_complex_to_mag_0, '0', qtgui_waterfall_sink_x_0, '0']
-- [blocks_complex_to_mag_0, '0', serorx_modes_preamble_0, '0']
 - [serorx_adsb_fields_0, lines, log_fields, in]
 - [serorx_adsb_fields_0, lines, log_overview, in]
-- [serorx_grx_source_0, '0', blocks_complex_to_mag_0, '0']
-- [serorx_modes_frame_check_0, frames, serorx_adsb_fields_0, frames]
-- [serorx_modes_frame_check_0, hex, log_hex, in]
-- [serorx_modes_frame_check_0, windows, time_accepted, in]
-- [serorx_modes_preamble_0, windows, serorx_modes_slicer_0, windows]
-- [serorx_modes_slicer_0, bits, serorx_modes_frame_check_0, bits]
-- [serorx_modes_slicer_0, confidence, time_confidence, in]
+- [serorx_grx_source_0, '0', qtgui_waterfall_sink_x_0, '0']
+- [serorx_grx_source_0, '0', serorx_modes_demod_0, '0']
+- [serorx_modes_demod_0, frames, serorx_adsb_fields_0, frames]
 
 metadata:
   file_format: 1

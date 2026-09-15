@@ -89,3 +89,8 @@ Build, test and packaging commands are in `gr-serorx/README.md`.
 logs, at start and while the flowgraph runs, under
 [Failures](gr-serorx/README.md#failures). For anything not covered there,
 open an issue: https://github.com/SeRoSystems/gr-serorx/issues.
+
+## Credits
+
+The Mode S decoder is a port of parts of [readsb](https://github.com/wiedehopf/readsb)
+(GPL-3.0), itself a fork of dump1090-fa. Copyright Michael Wolf and Oliver Jowett.

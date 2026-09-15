@@ -1,26 +1,44 @@
-"""ADS-B fields: frame PDU or hex text to a text line and a field dict."""
+"""ADS-B and Mode S fields: a frame PDU to a text line and a field dict."""
 import datetime
-import string
+import time
 
 import numpy as np
 import pmt
 from gnuradio import gr
 
 from . import message
-from .modes_slicer import meta_value, stream_clock
 
-HEX_DIGITS = frozenset(string.hexdigits)
+EXTENDED = (17, 18)
+ALTITUDE_DF = (0, 4, 16, 20)
+IDENTITY_DF = (5, 21)
+META_KEYS = ("score", "level", "errors", "time")
+
+
+def meta_value(meta, key):
+    value = pmt.dict_ref(meta, pmt.intern(key), pmt.PMT_NIL)
+    return None if pmt.is_null(value) else pmt.to_python(value)
+
+
+def stream_clock(meta):
+    """Seconds on the stream clock, from the sample offset where the meta carries one."""
+    offset = meta_value(meta, "offset")
+    rate = meta_value(meta, "samp_rate")
+    if offset is None or not rate:
+        return time.monotonic()
+    return offset / rate
 
 
 class adsb_fields(gr.basic_block):
-    """Decodes every DF17 or DF18 frame from `frames`: a PDU with the 14 bytes, a PDU with 28 hex characters,
-    or a hex string.
+    """Decodes the frames from Mode S Demod.
 
-    `lines` carries one text line per frame as a byte PDU: local time, DF, ICAO, type code and the fields.
-    `fields` carries a dict with df, icao, tc, frame (the 14 bytes), time (when the frame had one) and the
-    decoded fields. Positions need an even and an odd message of the aircraft within 10 s on the stream
-    clock (offset / samp_rate from the preamble stage, else the process clock).
-    Any other message is dropped with one warning.
+    `lines` carries one text line per frame as a byte PDU: local time, downlink format, address,
+    and the fields. `fields` carries a dict with df, icao, the frame bytes, the score, the signal
+    level, the repaired bit count, the time, and the decoded fields.
+
+    DF17 and DF18 give callsign, altitude, position and velocity. Positions need an even and an
+    odd message of the aircraft within 10 s on the stream clock. DF0, 4, 16 and 20 give altitude,
+    DF5 and DF21 give the squawk, DF11 gives the capability. Any other message is dropped with
+    one warning.
     """
 
     def __init__(self, print_lines=True):
@@ -46,37 +64,53 @@ class adsb_fields(gr.basic_block):
     def _drop(self):
         if not self._warned:
             self._warned = True
-            self._warn("frames expects byte PDUs from the Mode S Frame Check or hex strings, message dropped")
+            self._warn("frames expects byte PDUs from Mode S Demod, message dropped")
+
+    def _decode(self, df, text, meta):
+        if df in EXTENDED:
+            return self._decoder.decode(text, stream_clock(meta))
+        if df in ALTITUDE_DF:
+            altitude = message.ac13_altitude(text)
+            return {} if altitude is None else {"alt": altitude}
+        if df in IDENTITY_DF:
+            squawk = message.id13_squawk(text)
+            return {} if squawk is None else {"squawk": squawk}
+        if df == 11:
+            return {"ca": message.capability(text)}
+        return {}
 
     def _handle(self, msg):
-        meta = pmt.PMT_NIL
-        if pmt.is_pair(msg) and pmt.is_u8vector(pmt.cdr(msg)):
-            meta = pmt.car(msg)
-            data = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
-            text = data.hex().upper() if len(data) == 14 else data.decode("ascii", "replace").strip().upper()
-        elif pmt.is_symbol(msg):
-            text = pmt.symbol_to_string(msg).strip().upper()
-        else:
+        if not (pmt.is_pair(msg) and pmt.is_u8vector(pmt.cdr(msg))):
             return self._drop()
-        if len(text) != 28 or not HEX_DIGITS.issuperset(text):
+        data = bytes(pmt.u8vector_elements(pmt.cdr(msg)))
+        if len(data) not in (7, 14):
             return self._drop()
-        df = message.df(text)
-        if df not in (17, 18):
-            return
-        fields = self._decoder.decode(text, stream_clock(meta))
+        meta = pmt.car(msg)
+        text = data.hex().upper()
+        df = meta_value(meta, "df")
+        if df is None:
+            df = data[0] >> 3
+        icao = meta_value(meta, "icao")
+        icao_text = f"{icao:06X}" if icao is not None else message.icao(text)
+        fields = self._decode(df, text, meta)
         self._count += 1
         clock = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        line = f"{clock} DF{df} ICAO={message.icao(text)} TC={message.typecode(text)} " + " ".join(
-            f"{key}={value}" for key, value in fields.items())
-        line = line.rstrip()
+        head = f"{clock} DF{df} ICAO={icao_text}"
+        if df in EXTENDED:
+            head += f" TC={message.typecode(text)}"
+        line = (head + " " + " ".join(f"{key}={value}" for key, value in fields.items())).rstrip()
         if self._print:
             print(line, flush=True)
         # Text travels as bytes: a PMT symbol is interned for the life of the process.
-        self.message_port_pub(self._lines, pmt.cons(meta, pmt.init_u8vector(len(line), list(line.encode()))))
-        record = {"df": df, "icao": message.icao(text), "tc": message.typecode(text),
-                  "frame": np.frombuffer(bytes.fromhex(text), dtype=np.uint8)}
-        stamp = meta_value(meta, "time")
-        if stamp is not None:
-            record["time"] = stamp
+        self.message_port_pub(self._lines,
+                              pmt.cons(meta, pmt.init_u8vector(len(line), list(line.encode()))))
+        record = {"df": df, "icao": icao_text,
+                  "frame": np.frombuffer(data, dtype=np.uint8)}
+        if df in EXTENDED:
+            record["tc"] = message.typecode(text)
+        for key in META_KEYS:
+            value = meta_value(meta, key)
+            if value is not None:
+                record[key] = value
         record.update(fields)
         self.message_port_pub(self._fields, pmt.to_pmt(record))

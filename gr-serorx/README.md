@@ -109,18 +109,41 @@ Setters `set_center_freq`, `set_samp_rate`, `set_gain`, `set_rx_port`, `set_band
 
 ## ADS-B decoding
 
-For quickstart on 1090 MHz analysis, a basic decoding chain is provided. Four blocks in the GRC category `[SeRo RX]/ADS-B` (Python package `gnuradio.serorx.adsb`) take a magnitude stream (Complex to Mag, an even number of MSps) and decode to ADS-B lines. PDUs (a metadata dict and a data vector) connect them, so each stage is a message block that plugs into the stock PDU blocks. Text leaves the chain as byte PDUs. A message of a wrong type is dropped with a warning.
+For quickstart on 1090 MHz analysis, a Mode S decoding chain is provided. Two blocks in the GRC
+category `[SeRo RX]/ADS-B` (Python package `gnuradio.serorx.adsb`) take the complex baseband
+stream at an even number of MSps and decode to text lines.
+PDUs (a metadata dict and a data vector) connect them, the output is text as byte PDUs.
 
 `examples/adsb_stages_demo.grc` implements the chain on the 1090 channel.
 
 | Block | In | Out |
 | ----- | -- | --- |
-| **Mode S Preamble Detector** (`modes_preamble`) | magnitude stream | `windows`: one PDU per preamble candidate, the 120 µs frame window as float32, with `offset`, `spu`, `samp_rate` and `time` (from `rx_time` tags) in the metadata |
-| **Mode S PPM Slicer** (`modes_slicer`) | `windows` | `bits`: the 14 bytes with a `confidence` per bit and the `window` samples in the metadata. `confidence`: the confidences signed by the bit value, for a QT GUI Time Sink in message mode |
-| **Mode S Frame Check** (`modes_frame_check`) | `bits` | `frames`: frames with an accepted DF (default 17,18) and a valid CRC-24, after flipping the least confident bits one at a time when allowed. `hex`: the same as hex text in byte PDUs. `windows`: the samples of each accepted frame, for display |
-| **ADS-B Fields** (`adsb_fields`) | `frames` (PDU with the 14 bytes or 28 hex characters, or a hex string) | `lines`: one text line per frame as a byte PDU. `fields`: a dict with df, icao, tc, frame (the 14 bytes), time and the decoded fields |
+| **Mode S Demod** (`modes_demod`) | complex stream | `frames`: one PDU per accepted frame, the 14 or 7 bytes, with `df`, `icao`, `score`, `errors`, `alignment`, `level`, `offset`, `samp_rate`, `spu` and `time` in the metadata |
+| **ADS-B Fields** (`adsb_fields`) | `frames` | `lines`: one text line per frame as a byte PDU. `fields`: a dict with df, icao, frame, score, level, errors, time and the decoded fields |
 
-**ADS-B Decoder** (`adsb_decoder`) is the four in one block with a `frames` output port. The preamble stage and the decoder block follow the sample rate variable at runtime through `set_samp_rate`.
+Accepted downlink formats are 0, 4, 5, 11, 16, 17, 18, 20 and 21. Each preamble candidate is
+sliced at five sample offsets, every reading is scored, and the highest score wins. The CRC
+syndrome repairs one flipped bit by default and two on request.
+
+DF0, 4, 5, 16, 20 and 21 overlay the aircraft address on their parity field, so the checksum
+returns the address rather than a pass or fail. They are validated against the addresses of
+extended squitters heard in the last minute, so a short reply appears only once its aircraft has
+been seen.
+
+DF17 and DF18 decode to callsign, altitude, latitude and longitude (once an even and an odd
+position message of the aircraft arrived within 10 s), speed, track, airspeed, heading and
+vertical rate. DF0, 4, 16 and 20 give altitude, DF5 and DF21 the squawk, DF11 the capability.
+
+**ADS-B Decoder** (`adsb_decoder`) is both in one block with `frames` and `fields` output ports.
+The demodulator and the decoder block follow the sample rate variable at runtime through
+`set_samp_rate`.
+
+## Credits
+
+The Mode S decoder is a port of parts of [readsb](https://github.com/wiedehopf/readsb) (GPL-3.0),
+itself a fork of dump1090-fa. Ported: the CRC syndrome tables, the message scoring, the recently seen
+address filter, and the noise reference and acceptance rules of the demodulator. Copyright
+Michael Wolf and Oliver Jowett.
 
 ## QT GUI Message Log
 
