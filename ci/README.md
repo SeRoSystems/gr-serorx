@@ -11,6 +11,7 @@ from any directory and writes the packages to `output/` at the repository root.
 | `conda.sh` | conda package into `output/noarch/` with rattler-build |
 | `conda_test.sh` | install that package into a fresh micromamba environment, QA tests against it |
 | `check_version.sh` | compare a tag with the versions in `CMakeLists.txt` and `recipe.yaml` |
+| `changelog.sh` | print the `CHANGELOG.md` entry of a tag as the release description |
 | `run_qa.py` | run every QA file in `gr-serorx/python/serorx/qa/` with the current interpreter |
 | `conda-test-env.yml` | the environment `conda_test.sh` and the Windows job create |
 

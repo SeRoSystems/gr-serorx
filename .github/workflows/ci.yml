@@ -26,6 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: bash ci/check_version.sh "$GITHUB_REF_NAME"
+      # A tag without a changelog entry fails here, before anything is built.
+      - run: bash ci/changelog.sh "$GITHUB_REF_NAME"
 
   deb:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -84,6 +86,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The checkout comes first: it cleans the workspace, which would take the artifacts with it.
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: output
@@ -91,11 +95,12 @@ jobs:
       - name: Create the release or add the packages to an existing one
         run: |
           case "$GITHUB_REF_NAME" in *-*) pre=--prerelease ;; *) pre= ;; esac
+          bash ci/changelog.sh "$GITHUB_REF_NAME" > notes.md
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
               gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber output/*.deb output/*.conda
           else
               gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-                  --title "gr-serorx $GITHUB_REF_NAME" --generate-notes $pre output/*.deb output/*.conda
+                  --title "gr-serorx $GITHUB_REF_NAME" --notes-file notes.md $pre output/*.deb output/*.conda
           fi
         env:
           GH_TOKEN: ${{ github.token }}
