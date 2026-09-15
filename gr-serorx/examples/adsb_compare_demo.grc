@@ -1,0 +1,359 @@
+options:
+  parameters:
+    alias: ''
+    author: SeRo Systems GmbH
+    catch_exceptions: 'True'
+    comment: ''
+    copyright: ''
+    description: The receiver's own Mode S decoder against the one in this module
+    gen_linking: dynamic
+    generate_options: qt_gui
+    generator_class_name: PythonQtGuiGenerator
+    generator_module: gnuradio.grc.workflows.python_qt_gui
+    hier_block_src_path: '.:'
+    id: adsb_compare_demo
+    max_nouts: '0'
+    output_language: python
+    qt_qss_theme: ''
+    realtime_scheduling: ''
+    run: 'True'
+    run_command: '{python} -u {filename}'
+    thread_safe_setters: ''
+    title: ADS-B decoder comparison
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [16, 16.0]
+    rotation: 0
+    state: enabled
+
+blocks:
+- name: host
+  id: variable
+  parameters:
+    comment: ''
+    value: '''localhost'''
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [224, 16.0]
+    rotation: 0
+    state: enabled
+- name: samp_rate
+  id: variable
+  parameters:
+    comment: ''
+    value: 12e6
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [344, 16.0]
+    rotation: 0
+    state: enabled
+- name: compare
+  id: epy_block
+  parameters:
+    _source_code: "\"\"\"Compares the receiver's own Mode S decoder against the one\
+      \ in this module.\n\nThe grx_modes_downlink tags of GRX Source carry the frames\
+      \ the receiver decoded, each on the\nsample it was decoded from. Mode S Demod\
+      \ publishes the frames this module decodes, carrying the\nsame offset in their\
+      \ meta. Two frames are the same reception when their bytes are equal and their\n\
+      offsets lie within Window.\n\nA frame is judged once Settle seconds of samples\
+      \ have arrived after it, which is the window its\ncounterpart has to arrive\
+      \ in. `lines` carries one text line per frame only one side decoded, plus\n\
+      the counts every Report seconds. `grx_frames` carries every tagged frame in\
+      \ the shape Mode S\nDemod publishes it, so an ADS-B Fields block decodes the\
+      \ receiver's own output.\n\nA block the flowgraph is too slow to read is dropped\
+      \ with its tags, so loss removes the same\nreceptions from both sides.\n\"\"\
+      \"\nimport collections\nimport datetime\nimport time\n\nimport numpy as np\n\
+      import pmt\nfrom gnuradio import gr\n\nRECEIVER = 0\nDEMOD = 1\nNAMES = (\"\
+      receiver\", \"demod\")\n\n\ndef label(data):\n    df = data[0] >> 3\n    text\
+      \ = f\"DF{df}\"\n    if df in (11, 17, 18):\n        text += f\" ICAO={data[1:4].hex().upper()}\"\
+      \n    return text\n\n\ndef line(counts):\n    return (f\"receiver {counts[0]},\
+      \ demod {counts[1]}, both {counts[2]}, \"\n            f\"receiver only {counts[3]},\
+      \ demod only {counts[4]}\")\n\n\ndef field(value, key, fallback):\n    entry\
+      \ = pmt.dict_ref(value, pmt.intern(key), pmt.PMT_NIL)\n    return fallback if\
+      \ pmt.is_null(entry) else entry\n\n\nclass blk(gr.sync_block):\n    \"\"\"Mode\
+      \ S Compare\"\"\"\n\n    def __init__(self, samp_rate=12e6, window=8e-6, settle=0.5,\
+      \ report=10.0):\n        gr.sync_block.__init__(self, name=\"Mode S Compare\"\
+      , in_sig=[np.complex64], out_sig=None)\n        self.rate = float(samp_rate)\n\
+      \        self.tolerance = max(1, int(round(window * self.rate)))\n        self.hold\
+      \ = int(round(settle * self.rate))\n        self.report = float(report)\n  \
+      \      self.key = pmt.intern(\"grx_modes_downlink\")\n        self.payload =\
+      \ pmt.intern(\"payload\")\n        self.lines = pmt.intern(\"lines\")\n    \
+      \    self.out = pmt.intern(\"grx_frames\")\n        self.message_port_register_in(pmt.intern(\"\
+      frames\"))\n        self.message_port_register_out(self.lines)\n        self.message_port_register_out(self.out)\n\
+      \        self.set_msg_handler(pmt.intern(\"frames\"), self.handle)\n       \
+      \ # One entry is [offset, payload, matched], queued in offset order and indexed\
+      \ by payload.\n        self.queue = (collections.deque(), collections.deque())\n\
+      \        self.index = ({}, {})\n        self.seen = [0, 0]\n        self.only\
+      \ = [0, 0]\n        self.both = 0\n        self.reported = [0, 0, 0, 0, 0]\n\
+      \        self.horizon = 0\n        self.next_report = time.monotonic() + self.report\n\
+      \        self.warned = False\n\n    def handle(self, msg):\n        \"\"\"One\
+      \ frame from Mode S Demod.\"\"\"\n        if not (pmt.is_pair(msg) and pmt.is_u8vector(pmt.cdr(msg))):\n\
+      \            if not self.warned:\n                self.warned = True\n     \
+      \           self.logger.warn(\"frames expects byte PDUs from Mode S Demod, message\
+      \ dropped\")\n            return\n        offset = pmt.dict_ref(pmt.car(msg),\
+      \ pmt.intern(\"offset\"), pmt.PMT_NIL)\n        if not pmt.is_null(offset):\n\
+      \            self.add(DEMOD, int(pmt.to_python(offset)), bytes(pmt.u8vector_elements(pmt.cdr(msg))))\n\
+      \n    def publish(self, offset, data, value):\n        \"\"\"One tagged frame\
+      \ in the shape Mode S Demod publishes it.\"\"\"\n        meta = pmt.make_dict()\n\
+      \        meta = pmt.dict_add(meta, pmt.intern(\"df\"), pmt.from_long(data[0]\
+      \ >> 3))\n        meta = pmt.dict_add(meta, pmt.intern(\"level\"), field(value,\
+      \ \"level_signal\", pmt.from_double(0.0)))\n        meta = pmt.dict_add(meta,\
+      \ pmt.intern(\"errors\"), field(value, \"corrected_bits\", pmt.from_long(0)))\n\
+      \        meta = pmt.dict_add(meta, pmt.intern(\"offset\"), pmt.from_uint64(offset))\n\
+      \        meta = pmt.dict_add(meta, pmt.intern(\"samp_rate\"), pmt.from_double(self.rate))\n\
+      \        meta = pmt.dict_add(meta, pmt.intern(\"time\"), pmt.from_double(offset\
+      \ / self.rate))\n        self.message_port_pub(self.out, pmt.cons(meta, pmt.init_u8vector(len(data),\
+      \ list(data))))\n\n    def add(self, side, offset, data):\n        self.seen[side]\
+      \ += 1\n        if offset < self.horizon:\n            return\n        entry\
+      \ = [offset, data, False]\n        for other in self.index[1 - side].get(data,\
+      \ ()):\n            if not other[2] and abs(other[0] - offset) <= self.tolerance:\n\
+      \                other[2] = entry[2] = True\n                self.both += 1\n\
+      \                break\n        self.queue[side].append(entry)\n        self.index[side].setdefault(data,\
+      \ []).append(entry)\n\n    def expire(self, side):\n        queue = self.queue[side]\n\
+      \        while queue and queue[0][0] < self.horizon:\n            offset, data,\
+      \ matched = queue.popleft()\n            bucket = self.index[side][data]\n \
+      \           bucket.pop(0)\n            if not bucket:\n                del self.index[side][data]\n\
+      \            if not matched:\n                self.only[side] += 1\n       \
+      \         self.emit(f\"{NAMES[side]} only {label(data)}\")\n\n    def emit(self,\
+      \ text):\n        clock = datetime.datetime.now().strftime(\"%H:%M:%S.%f\")[:-3]\n\
+      \        line = f\"{clock} {text}\".encode()\n        # Text travels as bytes:\
+      \ a PMT symbol is interned for the life of the process.\n        self.message_port_pub(self.lines,\
+      \ pmt.cons(pmt.PMT_NIL, pmt.init_u8vector(len(line), list(line))))\n\n    def\
+      \ counts(self):\n        return [self.seen[RECEIVER], self.seen[DEMOD], self.both,\
+      \ self.only[RECEIVER], self.only[DEMOD]]\n\n    def summary(self):\n       \
+      \ \"\"\"The counts since the last call.\"\"\"\n        counts = self.counts()\n\
+      \        step = [now - before for now, before in zip(counts, self.reported)]\n\
+      \        self.reported = counts\n        return line(step)\n\n    def work(self,\
+      \ input_items, output_items):\n        count = len(input_items[0])\n       \
+      \ start = self.nitems_read(0)\n        for tag in self.get_tags_in_range(0,\
+      \ start, start + count, self.key):\n            payload = pmt.dict_ref(tag.value,\
+      \ self.payload, pmt.PMT_NIL)\n            if not pmt.is_u8vector(payload):\n\
+      \                continue\n            data = bytes(pmt.u8vector_elements(payload))\n\
+      \            self.publish(int(tag.offset), data, tag.value)\n            self.add(RECEIVER,\
+      \ int(tag.offset), data)\n        self.horizon = start + count - self.hold\n\
+      \        self.expire(RECEIVER)\n        self.expire(DEMOD)\n        if self.report\
+      \ > 0 and time.monotonic() >= self.next_report:\n            self.emit(self.summary())\n\
+      \            self.next_report = time.monotonic() + self.report\n        return\
+      \ count\n\n    def stop(self):\n        self.horizon = self.nitems_read(0) +\
+      \ self.hold\n        self.expire(RECEIVER)\n        self.expire(DEMOD)\n   \
+      \     self.logger.info(\"comparison stopped: \" + line(self.counts()))\n   \
+      \     return True\n"
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    report: '10.0'
+    samp_rate: samp_rate
+    settle: '0.5'
+    window: 8e-6
+  states:
+    _io_cache: ('Mode S Compare', 'blk', [('samp_rate', '12000000.0'), ('window',
+      '8e-06'), ('settle', '0.5'), ('report', '10.0')], [('0', 'complex', 1), ('frames',
+      'message', 1)], [('grx_frames', 'message', 1), ('lines', 'message', 1)], 'Mode
+      S Compare', ['report'])
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [424, 360.0]
+    rotation: 0
+    state: enabled
+- name: fields_demod
+  id: serorx_adsb_fields
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    print_lines: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [688, 192.0]
+    rotation: 0
+    state: enabled
+- name: fields_receiver
+  id: serorx_adsb_fields
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    print_lines: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [704, 336.0]
+    rotation: 0
+    state: enabled
+- name: log_demod
+  id: serorx_qt_msg_log
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    gui_hint: 'tabs@1: [0, 0, 1, 1]'
+    max_lines: '500'
+    title: This module
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [944, 176.0]
+    rotation: 0
+    state: enabled
+- name: log_diff
+  id: serorx_qt_msg_log
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    gui_hint: tabs@0
+    max_lines: '500'
+    title: Difference
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [944, 392.0]
+    rotation: 0
+    state: enabled
+- name: log_receiver
+  id: serorx_qt_msg_log
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    gui_hint: 'tabs@1: [0, 1, 1, 1]'
+    max_lines: '500'
+    title: Receiver
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [944, 320.0]
+    rotation: 0
+    state: enabled
+- name: serorx_grx_source_0
+  id: serorx_grx_source
+  parameters:
+    affinity: ''
+    alias: ''
+    band: '''1090'''
+    bandwidth: '0'
+    buffer_seconds: '0.5'
+    center_freq: 1090e6
+    channel_index: '0'
+    check_ranges: 'True'
+    comment: ''
+    control_port: '5309'
+    decode_delay: '0.25'
+    decode_port: '5303'
+    dme_tacan: 'False'
+    gain: '0'
+    host: host
+    isolated_pulses: 'False'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    mode123ac_interrogations: 'False'
+    mode4_interrogations: 'False'
+    mode4_replies: 'False'
+    mode5_interrogations: 'False'
+    mode5_replies: 'False'
+    modeac_downlink: 'False'
+    modes_downlink: 'True'
+    modes_uplink: 'False'
+    monitor_port: '5305'
+    output_type: '''fc32'''
+    rx_port: '''wide'''
+    samp_rate: 12e6
+    stream_port: '5308'
+    timeout: '5'
+    uat_adsb: 'False'
+    uat_uplink: 'False'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [104, 228.0]
+    rotation: 0
+    state: enabled
+- name: serorx_modes_demod_0
+  id: serorx_modes_demod
+  parameters:
+    affinity: ''
+    alias: ''
+    alignments: '5'
+    comment: ''
+    correct_bits: '1'
+    icao_ttl: '60.0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: samp_rate
+    short_replies: 'True'
+    threshold: '3.0'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [400, 160.0]
+    rotation: 0
+    state: enabled
+- name: tabs
+  id: qtgui_tab_widget
+  parameters:
+    alias: ''
+    comment: ''
+    gui_hint: ''
+    label0: Difference
+    label1: Decoders
+    label10: Tab 10
+    label11: Tab 11
+    label12: Tab 12
+    label13: Tab 13
+    label14: Tab 14
+    label15: Tab 15
+    label16: Tab 16
+    label17: Tab 17
+    label18: Tab 18
+    label19: Tab 19
+    label2: Tab 2
+    label3: Tab 3
+    label4: Tab 4
+    label5: Tab 5
+    label6: Tab 6
+    label7: Tab 7
+    label8: Tab 8
+    label9: Tab 9
+    num_tabs: '2'
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [472, 16.0]
+    rotation: 0
+    state: enabled
+
+connections:
+- [compare, grx_frames, fields_receiver, frames]
+- [compare, lines, log_diff, in]
+- [fields_demod, lines, log_demod, in]
+- [fields_receiver, lines, log_receiver, in]
+- [serorx_grx_source_0, '0', compare, '0']
+- [serorx_grx_source_0, '0', serorx_modes_demod_0, '0']
+- [serorx_modes_demod_0, frames, compare, frames]
+- [serorx_modes_demod_0, frames, fields_demod, frames]
+
+metadata:
+  file_format: 1
+  grc_version: 3.10.12.0

@@ -190,6 +190,13 @@ vertical rate. DF0, 4, 16 and 20 give altitude, DF5 and DF21 the squawk, DF11 th
 The demodulator and the decoder block follow the sample rate variable at runtime through
 `set_samp_rate`.
 
+`examples/adsb_compare_demo.grc` puts this chain next to the receiver's own decoder. An embedded
+Python block reads the `grx_modes_downlink` tags, calls a tag and a frame the same reception when
+their bytes are equal and their sample offsets lie within a window, and lists what only one side
+decoded. It also republishes each tagged frame as a PDU, so a second **ADS-B Fields** decodes the
+receiver's output into the same text lines. The block is an example of reading the decode tags in
+a flowgraph, edit it in place.
+
 ## Credits
 
 The Mode S decoder is a port of parts of [readsb](https://github.com/wiedehopf/readsb) (GPL-3.0),
