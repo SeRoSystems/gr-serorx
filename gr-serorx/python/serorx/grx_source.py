@@ -450,6 +450,7 @@ class grx_source(gr.sync_block):
 
     def _decode_loop(self, name):
         backoff = BACKOFF_START
+        interrupted = False
         label = SPECS[name].label
         while not self._stop_decoders.is_set():
             try:
@@ -461,11 +462,15 @@ class grx_source(gr.sync_block):
                 for item in call:
                     if self._stop_decoders.is_set():
                         break
+                    if interrupted:
+                        interrupted = False
+                        self._log("info", f"{label} stream from {self._host!r} resumed")
                     self._take_decode(item)
                     backoff = BACKOFF_START
             except GrxError as err:
                 if self._stop_decoders.is_set():
                     break
+                interrupted = True
                 self._log("warn", f"{label} stream from {self._host!r} lost "
                                   f"({self._stream_reason(err, self._decode_port, 'Receiverd')}), "
                                   f"reconnecting in {backoff:.0f} s")
@@ -485,8 +490,11 @@ class grx_source(gr.sync_block):
             if not item.timed:
                 self._decode_lost["untimed"] += 1
                 return
-            self._early.append((time.monotonic(), item))
-            self._match_locked()
+            placed = self._place_locked(item)
+            if placed == "early":
+                self._early.append((time.monotonic(), item))
+            elif placed != "placed":
+                self._decode_lost[placed] += 1
         self._report_decodes()
 
     def _match_locked(self):
@@ -508,18 +516,27 @@ class grx_source(gr.sync_block):
         self._early = kept
 
     def _place_locked(self, item):
-        """'placed', 'late' (older than the queue), 'gap' (inside a lost block) or 'early' (its block is not queued)."""
-        for index, entry in enumerate(self._queue):
+        """'placed', 'late' (older than the queue), 'gap' (inside a lost block) or 'early' (its block is not queued).
+
+        Walks the queue from the newest block: every stream but Mode A/C downlink runs ahead of the
+        samples, so the match is one or two steps from that end.
+        """
+        newest = len(self._queue) - 1
+        for index in range(newest, -1, -1):
+            entry = self._queue[index]
             offset = _sample_offset(item.timestamp, entry.timestamp, self._samp_rate)
-            if offset < 0:
-                if index == 0:
-                    self._decode_shortfall = max(self._decode_shortfall, -offset / self._samp_rate)
-                    return "late"
-                return "gap"
-            if offset < entry.count:
+            if offset >= entry.count:
+                return "early" if index == newest else "gap"
+            if offset >= 0:
                 entry.marks.append((int(offset), item.name, self._decode_keys[item.name], _decode_value(item)))
                 return "placed"
-        return "early"
+        if not self._queue:
+            return "early"
+        if self._queue[-1].arrived - self._queue[0].arrived < self._decode_delay:
+            # The queue is not yet as deep as the hold, so nothing can be judged late against it.
+            return "shallow"
+        self._decode_shortfall = max(self._decode_shortfall, -offset / self._samp_rate)
+        return "late"
 
     def _report_decodes(self):
         """Warns about items the buffer no longer held, at most one line per REPORT_INTERVAL."""
@@ -540,7 +557,8 @@ class grx_source(gr.sync_block):
         tagged = sum(self._decode_tagged.values())
         per_stream = ", ".join(f"{SPECS[name].label} {self._decode_tagged[name]}"
                                for name in self._decode_names if self._decode_tagged[name])
-        reasons = {"late": "older than the buffer", "gap": "in a lost block", "expired": "without samples",
+        reasons = {"late": "older than the buffer", "shallow": "older than the buffer at the start",
+                   "gap": "in a lost block", "expired": "without samples",
                    "discarded": "dropped with their blocks", "untimed": "without GPS time",
                    "receiver": "dropped by the receiver"}
         lost = ", ".join(f"{self._decode_lost[key]} {text}" for key, text in reasons.items() if self._decode_lost[key])
@@ -722,7 +740,9 @@ class grx_source(gr.sync_block):
                         break
                     entry = self._queue.popleft()
                     self._queued_bytes -= len(entry.samples)
-                    self._pending_tags.extend(entry.tags)
+                    # The tags of a block describe it, so they precede a setter tag waiting for the
+                    # same sample, which a setter call before the first block produces.
+                    self._pending_tags[:0] = entry.tags
                     self._marks = collections.deque(sorted(entry.marks, key=lambda mark: mark[0]))
                 self._current = entry.samples
                 self._offset = 0

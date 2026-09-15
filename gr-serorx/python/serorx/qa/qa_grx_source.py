@@ -297,7 +297,7 @@ class qa_grx_source(gr_unittest.TestCase):
         self.realtime_fake()
         with self.console() as lines:
             src = self.source(samp_rate=2.5e6)
-            sink = self.run_for(src, 1.5, [(0.3, lambda: self.assertTrue(src.set_samp_rate(4e6)))])
+            sink = self.run_for(src, 3.0, [(1.0, lambda: self.assertTrue(src.set_samp_rate(4e6)))])
         self.assertIn(("info", "sample rate 4.00 MSps"), lines)
         rate_tags = [(pmt.to_python(t.value), t.offset) for t in sink.tags() if pmt.symbol_to_string(t.key) == TAG_RATE]
         self.assertEqual([r for r, _ in rate_tags], [2.5e6, 4e6])
@@ -311,8 +311,8 @@ class qa_grx_source(gr_unittest.TestCase):
     def test_reconnect_resets_device_counter(self):
         self.realtime_fake()
         src = self.source(samp_rate=2.5e6)
-        sink = self.run_for(src, 1.5, [(0.2, lambda: self.fake.inject_lost_blocks(2)),
-                                       (0.7, lambda: self.assertTrue(src.set_samp_rate(4e6)))])
+        sink = self.run_for(src, 3.0, [(0.5, lambda: self.fake.inject_lost_blocks(2)),
+                                       (1.5, lambda: self.assertTrue(src.set_samp_rate(4e6)))])
         lost = [pmt.to_python(t.value) for t in sink.tags() if pmt.symbol_to_string(t.key) == TAG_LOST]
         self.assertEqual(lost, [2])
 
@@ -320,7 +320,7 @@ class qa_grx_source(gr_unittest.TestCase):
         self.realtime_fake()
         with self.console() as lines, mock.patch.object(MODULE, "REPORT_INTERVAL", 0.5):
             src = self.source(samp_rate=2.5e6)
-            self.run_for(src, 1.5, [(0.3, lambda: self.fake.inject_lost_blocks(3))])
+            self.run_for(src, 2.5, [(0.5, lambda: self.fake.inject_lost_blocks(3))])
         warnings = [text for level, text in lines if level == "warn"]
         self.assertEqual(len(warnings), 1, warnings)
         self.assertRegex(warnings[0], r"^lost 3 blocks in last \d+ s: "
@@ -329,7 +329,7 @@ class qa_grx_source(gr_unittest.TestCase):
         match = SUMMARY.fullmatch(lines[-1][1])
         self.assertIsNotNone(match, lines[-1])
         delivered, lost, percent, link, buffer = match.groups()
-        self.assertGreater(int(delivered), 50)
+        self.assertGreater(int(delivered), 5)
         self.assertEqual((lost, link, buffer), ("3", "3", "0"))
         self.assertAlmostEqual(float(percent), 300.0 / (int(delivered) + 3), delta=0.06)
 
@@ -366,6 +366,24 @@ class qa_grx_source(gr_unittest.TestCase):
         self.assertGreaterEqual(len(stream_lines), 2, lines)
         self.assertRegex(stream_lines[0], r"^stream from \'127\.0\.0\.1\' (lost \(.+\)|ended), reconnecting in 1 s$")
         self.assertIn(("info", "stream from '127.0.0.1' resumed"), lines)
+
+    def test_decode_stream_lost_and_resumed(self):
+        self.realtime_fake()
+        ports = (self.fake.control_port, self.fake.stream_port, self.fake.monitor_port, self.fake.decode_port)
+
+        def restart():
+            self.fake = fake_grx.FakeGrx(*ports, realtime=True)
+            self.fake.state.sample_rate = 2_500_000
+            self.fake.start()
+
+        with self.console() as lines:
+            src = self.source(samp_rate=2.5e6, decodes=("dme_tacan",), decode_delay=0.1)
+            self.run_for(src, 6.0, [(0.5, self.fake.stop), (1.2, restart)])
+        texts = [text for level, text in lines if text.startswith("DME/TACAN pulse pairs stream")]
+        self.assertGreaterEqual(len(texts), 2, lines)
+        self.assertRegex(texts[0], r"^DME/TACAN pulse pairs stream from '127\.0\.0\.1' lost \(.+\), "
+                                   r"reconnecting in 1 s$")
+        self.assertIn(("info", "DME/TACAN pulse pairs stream from '127.0.0.1' resumed"), lines)
 
     def test_stall_is_reported(self):
         self.realtime_fake()
@@ -481,21 +499,24 @@ class qa_grx_source(gr_unittest.TestCase):
 
     def test_decode_tag_carries_the_frame(self):
         self.realtime_fake()
-        src = self.source(band="1090", decodes=("modes_downlink",), decode_delay=0.3, buffer_seconds=1.0)
-        tags = self.decode_tags(self.run_for(src, 1.2), "modes_downlink")
+        src = self.source(samp_rate=2.5e6, decodes=("modes_downlink",), decode_delay=0.3, buffer_seconds=1.0)
+        tags = self.decode_tags(self.run_for(src, 1.5), "modes_downlink")
         self.assertGreater(len(tags), 0)
         offset, fields = tags[0]
-        self.assertEqual(bytes(fields["payload"]).hex().upper(), fake_grx.ADSB_FRAMES[0])
-        self.assertEqual(fields["df"], 17)
+        payload = bytes(fields["payload"])
+        self.assertIn(payload.hex().upper(), fake_grx.ADSB_FRAMES)
+        self.assertEqual(fields["df"], payload[0] >> 3)
         self.assertEqual(fields["level_signal"], fake_grx.SIGNAL_LEVEL)
         self.assertTrue(fields["message_valid"])
         self.assertGreater(fields["timestamp"], 0)
 
     def test_every_stream_tags(self):
         self.realtime_fake()
-        src = self.source(band="1090", decodes=STREAM_NAMES, decode_delay=0.3, buffer_seconds=1.0)
+        # The tunable channel at 2.5 MSps: a block is 210 ms, which the fake generates comfortably while
+        # the flowgraph runs in the same process. Every stream publishes on every channel, as on the device.
+        src = self.source(samp_rate=2.5e6, decodes=STREAM_NAMES, decode_delay=0.3, buffer_seconds=1.0)
         with self.console() as lines:
-            sink = self.run_for(src, 1.2)
+            sink = self.run_for(src, 3.5)
         for name in STREAM_NAMES:
             self.assertGreater(len(self.decode_tags(sink, name)), 0, name)
         summary = [text for level, text in lines if text.startswith("decoding stopped")]
@@ -520,8 +541,8 @@ class qa_grx_source(gr_unittest.TestCase):
     def test_late_items_ask_for_a_longer_delay(self):
         self.realtime_fake()
         with self.console() as lines, mock.patch.object(MODULE, "REPORT_INTERVAL", 0.3):
-            src = self.source(band="1090", decodes=("dme_tacan",), decode_delay=0.0, buffer_seconds=0.001)
-            self.run_for(src, 1.5)
+            src = self.source(band="1090", decodes=("modeac_downlink",), decode_delay=0.0, buffer_seconds=0.001)
+            self.run_for(src, 2.5)
         late = [text for level, text in lines if "older than the buffer" in text and level == "warn"]
         self.assertGreater(len(late), 0, lines)
         self.assertRegex(late[0], r"raise the decode delay above \d+\.\d\d s$")

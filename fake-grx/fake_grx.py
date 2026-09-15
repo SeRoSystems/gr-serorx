@@ -5,6 +5,7 @@ values outside fail with ABORTED and a sysfs message, the bandwidth is clamped t
 Block size and the signal are placeholders.
 """
 import argparse
+import collections
 import math
 import queue
 import signal
@@ -23,7 +24,7 @@ from gnuradio.serorx.proto import (Common_pb2, Monitord_pb2, Monitord_pb2_grpc, 
                                    Samplestreamingd_pb2, Samplestreamingd_pb2_grpc, TunableChanneld_pb2,
                                    TunableChanneld_pb2_grpc)
 
-BLOCK_SAMPLES = 8192
+BLOCK_SAMPLES = 524288
 RX_PORTS = {0: "Wide", 1: "Narrow (LNA)"}
 LO_RANGE = (325_000_000, 3_800_000_000)
 GAIN_RANGE = (0, 70)
@@ -45,9 +46,29 @@ ADSB_REPLY = (REPLY_BODY + (crc.checksum(REPLY_BODY + b"\x00" * 3, 56)
                             ^ 0x4840D6).to_bytes(3, "big")).hex().upper()
 ADSB_FRAMES = ("8D4840D6202CC371C32CE0576098", "8D40621D58C382D690C8AC2863A7",
                "8D40621D58C386435CC412692AD6", "8D485020994409940838175B284F", ADSB_REPLY)
-FRAME_EVERY = 40
 FRAME_AMPLITUDE = (400.0, 3000.0)
 MARGINAL_BIT_PROBABILITY = 0.3
+# Items per block, measured on a GRX 2120X at 12 MSps (43.7 ms per block). The streams that receiver
+# does not report carry a placeholder rate.
+RATES = {
+    "modes_downlink": 39.0,
+    "modeac_downlink": 13.0,
+    "modes_uplink": 11.0,
+    "mode123ac_interrogations": 0.7,
+    "mode4_interrogations": 0.2,
+    "mode4_replies": 0.2,
+    "mode5_interrogations": 0.2,
+    "mode5_replies": 0.2,
+    "dme_tacan": 1.0,
+    "isolated_pulses": 1.0,
+    "uat_adsb": 1.0,
+    "uat_uplink": 0.2,
+}
+# Blocks between the item and the block delivered with it. Measured on a 2120X: every stream but
+# Mode A/C reaches the client 3 to 269 ms before the block carrying its samples, because the decoder
+# reads the live signal while the sample path buffers. Mode A/C arrives 32 to 196 ms after its samples,
+# the device bins it over 100 ms.
+DECODE_OFFSET = collections.defaultdict(lambda: 1, modeac_downlink=-2)
 
 MODEL = "grx3x"
 HARDWARE = "fake"
@@ -55,8 +76,7 @@ IMAGE = "0000.00.00"
 SERIAL = "00:00:5e:00:53:01"
 FREQ_STEP = 1000
 
-# Receiverd: one synthetic item of every stream every FRAME_EVERY blocks, each at its own sample offset.
-DECODE_SLOT = BLOCK_SAMPLES // 16
+# Receiverd: every stream publishes RATES items per block, each in its own slot of the block.
 SIGNAL_LEVEL = -70.0
 NOISE_LEVEL = -95.0
 LEVELS = {"level_signal": SIGNAL_LEVEL, "level_noise": NOISE_LEVEL}
@@ -263,22 +283,67 @@ class _Samplestreamingd(Samplestreamingd_pb2_grpc.SamplestreamingdServicer):
                 return self.state.center_frequency
         return FIXED.get(key, 0)
 
-    def _publish_decodes(self, timestamp, rate, decoded):
-        """One item of every stream, the i-th at sample (i + 1) * DECODE_SLOT of the block.
+    @staticmethod
+    def _counts(carry):
+        """Items per stream for one block. The fractional part carries over, so the rate holds on average."""
+        counts = {}
+        for name, rate in RATES.items():
+            carry[name] += rate
+            counts[name] = int(carry[name])
+            carry[name] -= counts[name]
+        return counts
 
-        modes_downlink carries the frame the 1090 channel injected, at the sample it starts on.
+    @staticmethod
+    def _frame_plan(count, block, rate, rng):
+        """(sample, payload, text) per Mode S frame of one block, one per slot so none overlap."""
+        spu = rate // 1_000_000
+        slot = BLOCK_SAMPLES // max(count, 1)
+        plan = []
+        for index in range(count):
+            text = ADSB_FRAMES[(block * count + index) % len(ADSB_FRAMES)]
+            length = modes.frame_length(spu, 4 * len(text))
+            at = index * slot + int(rng.integers(0, max(slot - length, 1)))
+            plan.append((at, bytes.fromhex(text), text))
+        return plan
+
+    @staticmethod
+    def _inject(iq, plan, rate, rng):
+        """Adds every planned frame to the samples. Some carry one marginal bit (pulse 37 %, gap 35 %)."""
+        spu = rate // 1_000_000
+        for at, _, text in plan:
+            level = float(rng.uniform(*FRAME_AMPLITUDE))
+            frame = modes.synthesize(text, spu, level)
+            if rng.random() < MARGINAL_BIT_PROBABILITY:
+                bits = len(frame) // spu - modes.PREAMBLE_US
+                s0 = (modes.PREAMBLE_US + int(rng.integers(0, bits))) * spu
+                frame[s0:s0 + spu] = np.where(frame[s0:s0 + spu] > 0, 0.37 * level, 0.35 * level)
+            iq[at:at + len(frame), 0] += frame
+
+    def _publish_decodes(self, start_ns, rate, block, plan, counts):
+        """Publishes the items sent while block leaves, each in its own slot of the block it belongs to.
+
+        DECODE_OFFSET puts that block ahead of or behind the one being delivered, so the items reach the
+        client before or after their samples as they do on the device. Only capable streams publish.
         """
-        for index, spec in enumerate(STREAMS):
-            at = (index + 1) * DECODE_SLOT
-            if spec.name == "modes_downlink":
-                if decoded is None:
-                    continue
-                at = decoded[0]
-            item_ns = timestamp + at * 1_000_000_000 // rate
-            fields = DECODE_FIELDS[spec.name](item_ns)
-            if spec.name == "modes_downlink":
-                fields["payload"] = decoded[1]
-            self.state.publish(spec.name, item_ns, fields)
+        capable = set(self.state.capabilities)
+        for name, count in counts.items():
+            if not capable.intersection(SPECS[name].capabilities):
+                continue
+            target = block + DECODE_OFFSET[name]
+            if target < 0:
+                continue
+            base = start_ns + target * BLOCK_SAMPLES * 1_000_000_000 // rate
+            if name == "modes_downlink":
+                for at, payload, _ in plan:
+                    item_ns = base + at * 1_000_000_000 // rate
+                    fields = DECODE_FIELDS[name](item_ns)
+                    fields["payload"] = payload
+                    self.state.publish(name, item_ns, fields)
+                continue
+            slot = BLOCK_SAMPLES // max(count, 1)
+            for index in range(count):
+                item_ns = base + (index * slot + slot // 2) * 1_000_000_000 // rate
+                self.state.publish(name, item_ns, DECODE_FIELDS[name](item_ns))
 
     def StartStream(self, request, context):
         key = _key(request.radio_identification)
@@ -296,6 +361,8 @@ class _Samplestreamingd(Samplestreamingd_pb2_grpc.SamplestreamingdServicer):
         block = 0
         lost = 0
         sent = 0
+        carry = {name: 0.0 for name in RATES}
+        pending = []
         while context.is_active():
             while self.state.paused.is_set() and context.is_active():
                 time.sleep(0.05)
@@ -307,32 +374,28 @@ class _Samplestreamingd(Samplestreamingd_pb2_grpc.SamplestreamingdServicer):
                 skip = self.state.pending_lost
                 self.state.pending_lost = 0
             if self.realtime:
-                late = time.monotonic() - (start + block * block_period)
+                # A block leaves at the end of its own span, as it does on the device: its last sample
+                # has to exist before it can be sent.
+                late = time.monotonic() - (start + (block + 1) * block_period)
                 if late > SLOW_CONSUMER_SECONDS:
                     skip += int(late / block_period)
                 elif late < 0:
                     time.sleep(-late)
             block += skip
             lost += skip
-            decoded = None
+            counts = self._counts(carry)
+            # The frames of the next block are planned and published now, one block before the samples
+            # that carry them leave. They are planned for every channel, so the decoder streams carry
+            # them wherever the client samples, as they do on the device. Only the 1090 channel puts
+            # them into its samples, one block later.
+            ahead = self._frame_plan(counts["modes_downlink"], block + 1, rate, rng)
+            plan, pending = pending, ahead
             iq = rng.normal(0.0, NOISE_SIGMA, (BLOCK_SAMPLES, 2))
             extra = None if self.signal is None else self.signal(key, block, rate, self._center(key), rng)
             if extra is not None:
                 iq += extra
             elif frames:
-                # The 1090 channel carries one ADS-B frame every FRAME_EVERY blocks, cycling ADSB_FRAMES, with a
-                # random amplitude. Some frames carry one marginal bit (pulse 37 %, gap 35 %) for the correction stage.
-                if block % FRAME_EVERY == 0:
-                    spu = rate // 1_000_000
-                    level = float(rng.uniform(*FRAME_AMPLITUDE))
-                    frame = modes.synthesize(ADSB_FRAMES[(block // FRAME_EVERY) % len(ADSB_FRAMES)], spu, level)
-                    if rng.random() < MARGINAL_BIT_PROBABILITY:
-                        bits = len(frame) // spu - modes.PREAMBLE_US
-                        s0 = (modes.PREAMBLE_US + int(rng.integers(0, bits))) * spu
-                        frame[s0:s0 + spu] = np.where(frame[s0:s0 + spu] > 0, 0.37 * level, 0.35 * level)
-                    at = int(rng.integers(0, BLOCK_SAMPLES - len(frame)))
-                    iq[at:at + len(frame), 0] += frame
-                    decoded = (at, bytes.fromhex(ADSB_FRAMES[(block // FRAME_EVERY) % len(ADSB_FRAMES)]))
+                self._inject(iq, plan, rate, rng)
             else:
                 phase = ((block * BLOCK_SAMPLES + index) % TONE_DIVISOR) * step
                 iq[:, 0] += amplitude * np.cos(phase)
@@ -340,8 +403,7 @@ class _Samplestreamingd(Samplestreamingd_pb2_grpc.SamplestreamingdServicer):
             samples = np.clip(np.rint(iq), -32768, 32767).astype("<i2").tobytes()
             # The whole product, so the rounding to whole nanoseconds does not accumulate over the blocks.
             timestamp = start_ns + block * BLOCK_SAMPLES * 1_000_000_000 // rate
-            if block % FRAME_EVERY == 0:
-                self._publish_decodes(timestamp, rate, decoded)
+            self._publish_decodes(start_ns, rate, block, ahead, counts)
             yield Samplestreamingd_pb2.StartStreamReply(block_timestamp=timestamp, samples=samples, lost_blocks=lost)
             block += 1
             sent += 1
@@ -360,7 +422,8 @@ class _Receiverd(Receiverd_pb2_grpc.ReceiverdServicer):
     def __init__(self, state):
         self.state = state
 
-    def _stream(self, name, context):
+    def _stream(self, name, context, keep=None):
+        """Relays one stream. keep(fields) filters the items, as the format lists do on the device."""
         inner, reply = DECODE_TYPES[name]
         container = SPECS[name].container
         items = self.state.subscribe(name)
@@ -370,11 +433,19 @@ class _Receiverd(Receiverd_pb2_grpc.ReceiverdServicer):
                     timestamp, fields = items.get(timeout=POLL_SECONDS)
                 except queue.Empty:
                     continue
+                if keep is not None and not keep(fields):
+                    continue
                 item = inner(timestamp=timestamp, timing_base=self.state.timing_base,
                              timing_sync_source=Receiverd_pb2.GNSS, **fields)
                 yield reply(**{container: item})
         finally:
             self.state.unsubscribe(items)
+
+    @staticmethod
+    def _format_filter(formats):
+        """Keeps the items whose first payload byte carries one of the requested formats."""
+        wanted = frozenset(formats)
+        return lambda fields: bool(fields.get("payload")) and (fields["payload"][0] >> 3) in wanted
 
     @staticmethod
     def _formats(formats, context):
@@ -387,11 +458,11 @@ class _Receiverd(Receiverd_pb2_grpc.ReceiverdServicer):
 
     def GetModeSDownlinkFrames(self, request, context):
         self._formats(request.downlink_formats, context)
-        return self._stream("modes_downlink", context)
+        return self._stream("modes_downlink", context, self._format_filter(request.downlink_formats))
 
     def GetModeSUplinkFrames(self, request, context):
         self._formats(request.uplink_formats, context)
-        return self._stream("modes_uplink", context)
+        return self._stream("modes_uplink", context, self._format_filter(request.uplink_formats))
 
     def GetModeACDownlinkFrames(self, request, context):
         return self._stream("modeac_downlink", context)

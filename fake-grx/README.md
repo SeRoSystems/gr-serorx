@@ -8,13 +8,15 @@ Every QA test in `gr-serorx/python/serorx/qa/` starts its own `FakeGrx` on free 
 
 - `FakeGrx(control_port=0, stream_port=0, monitor_port=0, decode_port=0, realtime=False)`: port 0 picks a free port, `realtime=False` streams as fast as the client reads.
 - `realtime=True` paces blocks at the configured sample rate and counts blocks a slow client missed as `lost_blocks`, like the device.
-- `inject_lost_blocks(n)`, `pause_stream()`, `set_timing_base(base)`, `settings` and `state` steer and inspect it from a test.
+- `inject_lost_blocks(n)`, `pause_stream()`, `set_timing_base(base)`, `set_capabilities(list)`, `settings` and `state` steer and inspect it from a test.
+- A block is 524288 samples: 210 ms at 2.5 MSps, 43.7 ms at 12 MSps. The fake runs in the test's own process, so a test at 12 MSps gets about five blocks per second. Runtime tests use 2.5 MSps.
 
 ## Behaviour
 
-- Channels: tunable (index 0), 1030 (index 0), 1090 (index 0). The 1090 channel carries one reference ADS-B frame every 40 blocks at a random amplitude, some with one marginal bit.
+- Channels: tunable (index 0), 1030 (index 0), 1090 (index 0). The 1090 channel carries reference ADS-B frames at a busy channel's rate, each at a random amplitude, some with one marginal bit.
 - Limits follow the GRX 3X: LO 325 to 3800 MHz on both inputs, sample rate 2.083 to 61.44 MSps, both refused with `ABORTED` and a sysfs message. Bandwidth is clamped to 200 kHz to 20 MHz. The center frequency is rounded down to 1 kHz.
-- Receiverd: the sample stream publishes one item of every decoder stream every 40 blocks, the i-th at sample `(i + 1) * 512` of the block. The Mode S downlink item carries the frame the 1090 channel put into the samples, timestamped at the sample it starts on. Every item carries GPS time of week until `set_timing_base` says otherwise. An empty format list is refused with `INVALID_ARGUMENT`.
+- Receiverd: every stream publishes items on every channel, at the rates and timestamps of a busy receiver. `RATES` sets the items per block. Most streams arrive shortly before the samples they were decoded from, Mode A/C after them. The Mode S downlink items are the frames the 1090 channel puts into its samples, so a tag placed by its timestamp lands on its own frame.
+- A stream stays silent unless `reception_capabilities` lists it, which is what `set_capabilities` steers. The default reports all twelve. The Mode S requests relay only the formats they ask for, and an empty format list is refused with `INVALID_ARGUMENT`.
 - A sample rate change ends open streams, as the device interrupts its data flow.
 - Stream properties answer at once. The device recomputes them on a 10 s clock, which the fake does not model.
 

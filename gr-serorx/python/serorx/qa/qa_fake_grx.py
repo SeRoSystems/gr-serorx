@@ -99,16 +99,17 @@ class qa_fake_grx(gr_unittest.TestCase):
         thread.start()
         time.sleep(0.2)
         replies = list(self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(
-            radio_identification=FIXED_1090, requested_blocks=fake_grx.FRAME_EVERY)))
+            radio_identification=FIXED_1090, requested_blocks=2)))
         thread.join(5.0)
         call.cancel()
         self.assertEqual(len(items), 1)
         frame = items[0].frame
-        self.assertEqual(frame.payload.hex().upper(), fake_grx.ADSB_FRAMES[0])
+        self.assertIn(frame.payload.hex().upper(), fake_grx.ADSB_FRAMES)
         self.assertEqual(frame.timing_base, Receiverd_pb2.GPS_TOW)
         self.assertEqual(frame.level_signal, fake_grx.SIGNAL_LEVEL)
+        # The frames of a block are published while the block before it leaves.
         offset = (frame.timestamp - replies[0].block_timestamp) * 12_000_000 // 1_000_000_000
-        self.assertTrue(0 <= offset < fake_grx.BLOCK_SAMPLES, offset)
+        self.assertTrue(0 <= offset < 2 * fake_grx.BLOCK_SAMPLES, offset)
 
     def test_receiverd_rejects_an_empty_format_list(self):
         decode = Receiverd_pb2_grpc.ReceiverdStub(grpc.insecure_channel(f"127.0.0.1:{self.fake.decode_port}"))
@@ -126,7 +127,7 @@ class qa_fake_grx(gr_unittest.TestCase):
 
     def test_1090_channel_carries_adsb_frames(self):
         from gnuradio.serorx.adsb import demod
-        replies = list(self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(radio_identification=FIXED_1090, requested_blocks=3 * fake_grx.FRAME_EVERY)))
+        replies = list(self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(radio_identification=FIXED_1090, requested_blocks=3)))
         raw = np.frombuffer(b"".join(r.samples for r in replies), dtype="<i2").astype(np.float32)
         mag = np.abs(raw[0::2] + 1j * raw[1::2]).astype(np.float32)
         valid = [frame.data.hex().upper() for frame in demod.Demod(12).process(mag, 0, 0.0)]
@@ -137,7 +138,7 @@ class qa_fake_grx(gr_unittest.TestCase):
         # The DF4 reply carries no parity of its own. It decodes only because the DF17 frame from
         # the same aircraft comes earlier in the cycle and fills the address filter.
         from gnuradio.serorx.adsb import demod
-        blocks = 6 * fake_grx.FRAME_EVERY
+        blocks = 3
         replies = list(self.stream.StartStream(Samplestreamingd_pb2.StartStreamRequest(radio_identification=FIXED_1090, requested_blocks=blocks)))
         raw = np.frombuffer(b"".join(r.samples for r in replies), dtype="<i2").astype(np.float32)
         mag = np.abs(raw[0::2] + 1j * raw[1::2]).astype(np.float32)

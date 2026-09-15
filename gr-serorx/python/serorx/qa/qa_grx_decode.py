@@ -9,7 +9,8 @@ from gnuradio.serorx.grx_client import GrxError, GrxStream, radio_id
 from gnuradio.serorx.grx_decode import SPECS, STREAM_NAMES, GrxDecode
 from gnuradio.serorx.proto import Receiverd_pb2
 
-BLOCKS = 3 * fake_grx.FRAME_EVERY
+# The sparsest streams publish one item per five blocks, so ten cover every stream.
+BLOCKS = 10
 
 
 class qa_grx_decode(gr_unittest.TestCase):
@@ -60,8 +61,8 @@ class qa_grx_decode(gr_unittest.TestCase):
 
     def test_mode_s_fields(self):
         item = self.first(["modes_downlink"])["modes_downlink"]
-        self.assertEqual(item.fields["payload"].hex().upper(), fake_grx.ADSB_FRAMES[0])
-        self.assertEqual(item.fields["df"], 17)
+        self.assertIn(item.fields["payload"].hex().upper(), fake_grx.ADSB_FRAMES)
+        self.assertEqual(item.fields["df"], item.fields["payload"][0] >> 3)
         self.assertTrue(item.fields["message_valid"])
         self.assertTrue(item.fields["address_tracked"])
         self.assertEqual(item.fields["level_signal"], fake_grx.SIGNAL_LEVEL)
