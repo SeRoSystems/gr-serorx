@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+- A new example flowgraph, `examples/adsb_compare_demo.grc`, compares
+  the decoding results of the receivers internal decoding and the GR
+  python implementation.
+
 ## 0.7.0
 
 - `GRX Source` tags the receiver's own decoding results onto the samples
