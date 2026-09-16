@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.00
+
+- First major release
+
 ## 0.7.1
 
 - A new example flowgraph, `examples/adsb_compare_demo.grc`, compares
