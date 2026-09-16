@@ -59,7 +59,7 @@ blocks:
     affinity: ''
     alias: ''
     comment: ''
-    gui_hint: tabs@3
+    gui_hint: tabs@1
     max_lines: '500'
     title: Decoded ADS-B
   states:
@@ -118,7 +118,7 @@ blocks:
     freqhalf: 'True'
     grid: 'True'
     gui_hint: 'tabs@0: [0, 0, 1, 1]'
-    int_max: '-80'
+    int_max: '-30'
     int_min: '-130'
     label1: ''
     label10: ''
@@ -175,16 +175,30 @@ blocks:
     check_ranges: 'True'
     comment: ''
     control_port: '5309'
+    decode_delay: '0.25'
+    decode_port: '5303'
+    dme_tacan: 'False'
     gain: '0'
     host: host
+    isolated_pulses: 'False'
     maxoutbuf: '0'
     minoutbuf: '0'
+    mode123ac_interrogations: 'False'
+    mode4_interrogations: 'False'
+    mode4_replies: 'False'
+    mode5_interrogations: 'False'
+    mode5_replies: 'False'
+    modeac_downlink: 'False'
+    modes_downlink: 'False'
+    modes_uplink: 'False'
     monitor_port: '5305'
     output_type: '''fc32'''
     rx_port: '''wide'''
     samp_rate: 12e6
     stream_port: '5308'
     timeout: '5'
+    uat_adsb: 'False'
+    uat_uplink: 'False'
   states:
     bus_sink: false
     bus_source: false
@@ -220,7 +234,7 @@ blocks:
     comment: ''
     gui_hint: ''
     label0: Overview
-    label1: Slicer
+    label1: Fields
     label10: Tab 10
     label11: Tab 11
     label12: Tab 12
@@ -239,7 +253,7 @@ blocks:
     label7: Tab 7
     label8: Tab 8
     label9: Tab 9
-    num_tabs: '4'
+    num_tabs: '2'
   states:
     bus_sink: false
     bus_source: false
