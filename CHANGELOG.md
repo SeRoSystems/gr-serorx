@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.00
+## 1.0.0
 
 - First major release
 
