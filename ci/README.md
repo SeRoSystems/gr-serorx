@@ -3,6 +3,11 @@
 The pipelines call these scripts, each as root in an `ubuntu:26.04` container. Every script works
 from any directory and writes the packages to `output/` at the repository root.
 
+The QA tests run a second time in `ubuntu:22.04` (`test-jammy`), the oldest supported release.
+There apt carries protobuf 3.12 and grpcio 1.30, so `apt.sh` installs protobuf 3.20 and grpcio 1.51
+or newer with pip: the committed stubs need the first, and the 1.30 C core spins instead of creating
+a channel on a current kernel. GNU Radio is 3.10.1 here, which does not expose the block logger.
+
 | Script | Purpose |
 | --- | --- |
 | `apt.sh` | build and test dependencies from apt |
@@ -31,7 +36,8 @@ podman run --rm -v "$PWD":/src -w /src docker.io/library/ubuntu:26.04 \
     bash -c "bash ci/apt.sh && bash ci/test.sh && bash ci/deb.sh"
 ```
 
-`docker run` takes the same arguments. Add `-e APT_MIRROR=http://de.archive.ubuntu.com/ubuntu/`
+`docker run` takes the same arguments. `docker.io/library/ubuntu:22.04` in place of the image runs
+the `test-jammy` job. Add `-e APT_MIRROR=http://de.archive.ubuntu.com/ubuntu/`
 (or another nearby mirror) to speed up the download. The conda jobs need `curl`, `ca-certificates`
 and `bzip2` in the container:
 

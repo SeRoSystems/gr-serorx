@@ -1,6 +1,7 @@
 """GNU Radio source block for one channel of a SeRo Systems GRX receiver."""
 import collections
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass, field, replace
@@ -220,7 +221,12 @@ class grx_source(gr.sync_block):
     # console
 
     def _log(self, level, text):
-        getattr(self.logger, level)(text)
+        # A Python block only has logger in the later 3.10 releases. When unavailable, the line goes to stderr.
+        logger = getattr(self, "logger", None)
+        if logger is None:
+            print(f"grx_source :{level}: {text}", file=sys.stderr)
+            return
+        getattr(logger, level)(text)
 
     def _connection_problem(self, err, port, service, hint=True):
         """One line for an RPC that never reached the service, None when the service answered."""

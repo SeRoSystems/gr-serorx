@@ -1,5 +1,6 @@
 """ADS-B and Mode S fields: a frame PDU to a text line and a field dict."""
 import datetime
+import sys
 import time
 
 import numpy as np
@@ -59,7 +60,12 @@ class adsb_fields(gr.basic_block):
         return self._count
 
     def _warn(self, text):
-        self.logger.warn(text)
+        # A Python block only has logger in the later 3.10 releases. When unavailable, the line goes to stderr.
+        logger = getattr(self, "logger", None)
+        if logger is None:
+            print(f"adsb_fields :warn: {text}", file=sys.stderr)
+            return
+        logger.warn(text)
 
     def _drop(self):
         if not self._warned:

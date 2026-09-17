@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2
+
+- Install failed on older ubuntu releases because the protobuf apt package
+  is outdated. The Debian package now accepts any `python3-protobuf`, the
+  3.20 requirement is checked at import
+- The import error for a too old protobuf names the pip and conda command
+  that installs a current one
+- GNU Radio 3.10.1, the release on Ubuntu 22.04, does not expose the block
+  logger. Console lines go to stderr there instead of ending the flowgraph
+
 ## 1.0.1
 
 - Remove unused tabs in example flowgraph

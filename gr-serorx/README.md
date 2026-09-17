@@ -85,7 +85,7 @@ A failure at start is logged as an error and raised, so it is also the last line
 | RX input label unknown | `RX input 'wide' not found, receiver offers UNKNOWN, Wide, Narrow` |
 | Monitord port closed | a warning, `host '192.0.2.1' answers, but port 5305 (Monitord) is closed, check address and firewall. Model and serial unknown`, and the flowgraph runs |
 | grpcio or protobuf missing for the interpreter GRC uses | `gr-serorx needs the grpcio and protobuf packages for /usr/bin/python3: sudo apt install python3-grpcio python3-protobuf (Debian), conda install grpcio protobuf (radioconda)` |
-| protobuf older than 3.20 | `protobuf 3.19.6 is too old for gr-serorx, 3.20 or newer is needed` |
+| protobuf older than 3.20 | `protobuf 3.19.6 is too old for gr-serorx, 3.20 or newer is needed: /usr/bin/python3 -m pip install --user --upgrade "protobuf>=3.20", or conda install "protobuf>=3.20" (radioconda)` |
 | Blocks missing from the GRC palette after install | GRC lists new blocks only after a restart. A GNU Radio installed outside `/usr` or `/usr/local` needs `GRC_BLOCKS_PATH=<prefix>/share/gnuradio/grc/blocks` |
 
 While the flowgraph runs:

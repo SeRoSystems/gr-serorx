@@ -39,7 +39,7 @@ find_package(Gnuradio "3.10" REQUIRED)
 # cmake-format: off
 set(VERSION_MAJOR 1)
 set(VERSION_API   0)
-set(VERSION_ABI   1)
+set(VERSION_ABI   2)
 set(VERSION_PATCH 0)
 # cmake-format: on
 
@@ -95,7 +95,7 @@ set(CPACK_PACKAGE_VERSION "${VERSION_MAJOR}.${VERSION_API}.${VERSION_ABI}")
 set(CPACK_PACKAGE_CONTACT "Fabio Ramirez Stern <github@faramire.de>")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "GNU Radio source block for SeRo Systems GRX receivers")
 set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE all)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuradio (>= 3.10), python3 (>= 3.10), python3-grpcio, python3-protobuf (>= 3.20), python3-numpy")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuradio (>= 3.10), python3 (>= 3.10), python3-grpcio, python3-protobuf, python3-numpy")
 set(CPACK_DEBIAN_PACKAGE_SECTION hamradio)
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/SeRoSystems/gr-serorx")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)

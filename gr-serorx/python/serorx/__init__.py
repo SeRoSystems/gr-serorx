@@ -18,7 +18,11 @@ except ImportError as err:
         "sudo apt install python3-grpcio python3-protobuf (Debian), conda install grpcio protobuf (radioconda)"
     ) from err
 if _protobuf_too_old(_protobuf_version):
-    raise ImportError(f"protobuf {_protobuf_version} is too old for gr-serorx: 3.20 or newer is needed")
+    raise ImportError(
+        f"protobuf {_protobuf_version} is too old for gr-serorx, 3.20 or newer is needed: "
+        f'{sys.executable} -m pip install --user --upgrade "protobuf>=3.20", '
+        'or conda install "protobuf>=3.20" (radioconda)'
+    )
 
 from .grx_source import grx_source  # noqa: E402
 from .qt_msg_log import qt_msg_log  # noqa: E402
